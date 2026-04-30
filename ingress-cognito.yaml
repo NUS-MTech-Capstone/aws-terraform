@@ -1,0 +1,36 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: app-ingress
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+    
+    # Cognito Authentication Annotations [citation:7]
+    alb.ingress.kubernetes.io/auth-type: cognito
+    alb.ingress.kubernetes.io/auth-idp-cognito: '{
+      "UserPoolArn": "${USER_POOL_ARN}",
+      "UserPoolClientId": "${USER_POOL_CLIENT_ID}",
+      "UserPoolDomain": "${USER_POOL_DOMAIN}"
+    }'
+    alb.ingress.kubernetes.io/auth-scope: "openid email profile"
+    alb.ingress.kubernetes.io/auth-session-timeout: "3600"
+    alb.ingress.kubernetes.io/auth-on-unauthenticated-request: "authenticate"
+    
+    # SSL/TLS
+    alb.ingress.kubernetes.io/certificate-arn: "${CERTIFICATE_ARN}"
+    
+spec:
+  rules:
+  - host: app.yourdomain.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: your-app-service
+            port:
+              number: 80
