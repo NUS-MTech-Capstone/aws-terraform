@@ -1,12 +1,12 @@
 
 variable "cognito_callback_urls" {
   type    = list(string)
-  default = ["https://ddm.keiyam.me/oauth2/idpresponse"]
+  default = ["https://api.ddm.keiyam.me/oauth2/idpresponse"]
 }
 
 variable "cognito_logout_urls" {
   type    = list(string)
-  default = ["https://ddm.keiyam.me/logout"]
+  default = ["https://api.ddm.keiyam.me/logout"]
 }
 
 variable "cognito_domain_prefix" {

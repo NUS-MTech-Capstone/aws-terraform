@@ -24,6 +24,36 @@ variable "origin_domain_name" {
   default = "origin.ddm.keiyam.me"
 }
 
+variable "application_domain_name" {
+  description = "Public hostname for the DenDenMushi API and WebSocket ingress."
+  type        = string
+  default     = "api.ddm.keiyam.me"
+}
+
+variable "route53_zone_name" {
+  description = "Public Route 53 hosted zone containing the application hostname."
+  type        = string
+  default     = "keiyam.me"
+}
+
+variable "application_alb_dns_name" {
+  description = "ALB DNS name reported by Kubernetes. Leave empty on the first apply."
+  type        = string
+  default     = ""
+}
+
+variable "application_alb_name" {
+  description = "AWS Load Balancer name configured by the Kubernetes ingress."
+  type        = string
+  default     = "dendenmushi-dev"
+}
+
+variable "github_oidc_provider_arn" {
+  description = "Existing GitHub Actions OIDC provider ARN. Leave empty to create it."
+  type        = string
+  default     = ""
+}
+
 variable "aws_iam_access_key_id" {
   type      = string
   sensitive = true

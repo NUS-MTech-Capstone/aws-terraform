@@ -120,6 +120,11 @@ output "cluster_security_group_id" {
   value       = module.eks.cluster_security_group_id
 }
 
+output "eks_node_security_group_id" {
+  description = "Security group attached to EKS worker nodes"
+  value       = module.eks.node_security_group_id
+}
+
 output "configure_kubectl" {
   description = "Command to configure kubectl"
   value       = "aws eks update-kubeconfig --name ${module.eks.cluster_name} --region ${var.aws_region}"

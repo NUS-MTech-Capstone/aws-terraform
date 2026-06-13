@@ -1,4 +1,73 @@
-# aws
+# AWS Infrastructure
+
+Terraform for the DenDenMushi VPC, EKS cluster, Cognito, application
+certificate, ECR repositories, and workload IAM roles.
+
+## Apply
+
+Refresh AWS credentials before running Terraform:
+
+```bash
+aws sts get-caller-identity
+./scripts/preflight.sh
+terraform init -reconfigure
+terraform validate
+terraform apply -var-file=secrets.tfvars
+```
+
+The first apply leaves `application_alb_dns_name` empty because Kubernetes has
+not created the application ALB yet. After `kubernetes/scripts/deploy-aws.sh`
+prints the ALB hostname, create the Route 53 record:
+
+```bash
+terraform apply \
+  -var-file=secrets.tfvars \
+  -var='application_alb_dns_name=<ALB DNS name>'
+```
+
+## GitHub OIDC
+
+By default Terraform creates the account-wide GitHub Actions OIDC provider. If
+one already exists, pass it instead:
+
+```bash
+terraform apply \
+  -var-file=secrets.tfvars \
+  -var='github_oidc_provider_arn=arn:aws:iam::<account-id>:oidc-provider/token.actions.githubusercontent.com'
+```
+
+The preflight script also reports existing ECR repositories and prints the
+corresponding `terraform import` commands. Import existing repositories before
+applying so Terraform does not attempt to recreate them.
+
+The ECR push role is restricted to the five service repositories:
+
+```bash
+terraform output -raw github_ecr_push_role_arn
+```
+
+The proxy-dataplane role can only read secrets under:
+
+```text
+dendenmushi/targets/*
+```
+
+## Useful Outputs
+
+```bash
+terraform output ecr_repository_urls
+terraform output proxy_dataplane_role_arn
+terraform output application_certificate_arn
+terraform output cognito_user_pool_arn
+terraform output cognito_client_id
+terraform output cognito_domain
+terraform output configure_kubectl
+```
+
+## Existing Test Stack
+
+The existing nginx, CloudFront, and root-domain test resources remain in this
+stack. They are independent from the `api.ddm.keiyam.me` application ingress.
 
 
 # 1. Initialize Terraform
