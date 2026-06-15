@@ -40,7 +40,7 @@ The preflight script also reports existing ECR repositories and prints the
 corresponding `terraform import` commands. Import existing repositories before
 applying so Terraform does not attempt to recreate them.
 
-The ECR push role is restricted to the five service repositories:
+The ECR push role is restricted to the six service repositories:
 
 ```bash
 terraform output -raw github_ecr_push_role_arn
@@ -51,6 +51,27 @@ The proxy-dataplane role can only read secrets under:
 ```text
 dendenmushi/targets/*
 ```
+
+The incident-agent role can invoke Bedrock, consume only its SQS queue, and read
+only its Postgres connection secret. The monitored application's Terraform
+stack should publish CloudWatch alarms to:
+
+```bash
+terraform output -raw incident_alerts_topic_arn
+```
+
+Terraform CI and apply use separate GitHub OIDC roles:
+
+```bash
+terraform output -raw github_terraform_plan_role_arn
+terraform output -raw github_terraform_apply_role_arn
+```
+
+Store these as `AWS_TERRAFORM_PLAN_ROLE_ARN` and
+`AWS_TERRAFORM_APPLY_ROLE_ARN`. Configure required reviewers on the repository's
+`dev` GitHub environment before enabling apply. The roles must first be
+bootstrapped with one authenticated local Terraform apply before the OIDC
+workflows can assume them.
 
 ## Useful Outputs
 

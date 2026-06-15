@@ -5,6 +5,7 @@ locals {
     "dendenmushi/proxy-controlplane",
     "dendenmushi/proxy-dataplane",
     "dendenmushi/ddm-agent",
+    "dendenmushi/incident-agent",
   ])
 }
 
@@ -53,4 +54,3 @@ output "ecr_repository_urls" {
     for name, repository in aws_ecr_repository.services : name => repository.repository_url
   }
 }
-

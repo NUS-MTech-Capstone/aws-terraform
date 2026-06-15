@@ -1,0 +1,176 @@
+resource "aws_sns_topic" "incident_alerts" {
+  name              = "${var.name}-incident-alerts-${var.env}"
+  kms_master_key_id = "alias/aws/sns"
+
+  tags = {
+    Environment = var.env
+    Project     = var.name
+  }
+}
+
+resource "aws_sns_topic_policy" "incident_alerts" {
+  arn = aws_sns_topic.incident_alerts.arn
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "OwnerAdministration"
+        Effect    = "Allow"
+        Principal = { AWS = "*" }
+        Action    = "SNS:*"
+        Resource  = aws_sns_topic.incident_alerts.arn
+        Condition = {
+          StringEquals = {
+            "AWS:SourceOwner" = data.aws_caller_identity.current.account_id
+          }
+        }
+      },
+      {
+        Sid       = "AllowCloudWatchAlarms"
+        Effect    = "Allow"
+        Principal = { Service = "cloudwatch.amazonaws.com" }
+        Action    = "sns:Publish"
+        Resource  = aws_sns_topic.incident_alerts.arn
+        Condition = {
+          StringEquals = {
+            "aws:SourceAccount" = data.aws_caller_identity.current.account_id
+          }
+        }
+      },
+    ]
+  })
+}
+
+resource "aws_sqs_queue" "incident_alerts_dlq" {
+  name                      = "${var.name}-incident-alerts-dlq-${var.env}"
+  message_retention_seconds = 1209600
+  sqs_managed_sse_enabled   = true
+
+  tags = {
+    Environment = var.env
+    Project     = var.name
+  }
+}
+
+resource "aws_sqs_queue" "incident_alerts" {
+  name                       = "${var.name}-incident-alerts-${var.env}"
+  visibility_timeout_seconds = 600
+  message_retention_seconds  = 345600
+  receive_wait_time_seconds  = 20
+  sqs_managed_sse_enabled    = true
+  redrive_policy = jsonencode({
+    deadLetterTargetArn = aws_sqs_queue.incident_alerts_dlq.arn
+    maxReceiveCount     = 5
+  })
+
+  tags = {
+    Environment = var.env
+    Project     = var.name
+  }
+}
+
+resource "aws_sqs_queue_policy" "incident_alerts" {
+  queue_url = aws_sqs_queue.incident_alerts.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid       = "AllowIncidentSNSTopic"
+      Effect    = "Allow"
+      Principal = { Service = "sns.amazonaws.com" }
+      Action    = "sqs:SendMessage"
+      Resource  = aws_sqs_queue.incident_alerts.arn
+      Condition = {
+        ArnEquals = {
+          "aws:SourceArn" = aws_sns_topic.incident_alerts.arn
+        }
+      }
+    }]
+  })
+}
+
+resource "aws_sns_topic_subscription" "incident_alerts" {
+  topic_arn = aws_sns_topic.incident_alerts.arn
+  protocol  = "sqs"
+  endpoint  = aws_sqs_queue.incident_alerts.arn
+}
+
+resource "aws_secretsmanager_secret" "incident_database_url" {
+  name                    = "${var.name}/incident-agent/database-url-${var.env}"
+  recovery_window_in_days = 0
+
+  tags = {
+    Environment = var.env
+    Project     = var.name
+  }
+}
+
+resource "aws_secretsmanager_secret_version" "incident_database_url" {
+  secret_id = aws_secretsmanager_secret.incident_database_url.id
+  secret_string = format(
+    "postgres://%s:%s@%s:%d/%s?sslmode=require",
+    urlencode(var.postgres_db_username),
+    urlencode(var.postgres_db_password),
+    aws_db_instance.postgres.address,
+    aws_db_instance.postgres.port,
+    aws_db_instance.postgres.db_name,
+  )
+}
+
+resource "aws_iam_policy" "incident_agent" {
+  name = "${var.name}-incident-agent-${var.env}"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "bedrock:InvokeModel",
+          "bedrock:InvokeModelWithResponseStream",
+        ]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "sqs:ReceiveMessage",
+          "sqs:DeleteMessage",
+          "sqs:ChangeMessageVisibility",
+          "sqs:GetQueueAttributes",
+        ]
+        Resource = aws_sqs_queue.incident_alerts.arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["secretsmanager:GetSecretValue"]
+        Resource = aws_secretsmanager_secret.incident_database_url.arn
+      },
+    ]
+  })
+}
+
+module "iam_assumable_role_incident_agent" {
+  source  = "terraform-aws-modules/iam/aws//modules/iam-assumable-role-with-oidc"
+  version = "~> 5.0"
+
+  create_role                   = true
+  role_name                     = "${var.name}-incident-agent-${var.env}"
+  provider_url                  = module.eks.oidc_provider
+  role_policy_arns              = [aws_iam_policy.incident_agent.arn]
+  oidc_fully_qualified_subjects = ["system:serviceaccount:dendenmushi:incident-agent"]
+}
+
+output "incident_agent_role_arn" {
+  value = module.iam_assumable_role_incident_agent.iam_role_arn
+}
+
+output "incident_alerts_topic_arn" {
+  value = aws_sns_topic.incident_alerts.arn
+}
+
+output "incident_alerts_queue_url" {
+  value = aws_sqs_queue.incident_alerts.id
+}
+
+output "incident_database_secret_id" {
+  value = aws_secretsmanager_secret.incident_database_url.id
+}
