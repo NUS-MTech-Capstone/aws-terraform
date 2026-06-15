@@ -40,7 +40,8 @@ The preflight script also reports existing ECR repositories and prints the
 corresponding `terraform import` commands. Import existing repositories before
 applying so Terraform does not attempt to recreate them.
 
-The ECR push role is restricted to the six service repositories:
+The ECR push role is restricted to the service repositories declared in
+`github_oidc.tf`, including `nest-backend` and `angular`:
 
 ```bash
 terraform output -raw github_ecr_push_role_arn
@@ -51,6 +52,17 @@ The proxy-dataplane role can only read secrets under:
 ```text
 dendenmushi/targets/*
 ```
+
+Terraform also creates:
+
+- `dendenmushi/nest-backend` and `dendenmushi/angular` ECR repositories.
+- A least-privilege Nest IRSA role for the required Cognito admin operations.
+- A generated `ddm_webapp` database login and Secrets Manager connection URL.
+- The `Employee`, `TechnicalStaff`, `Manager`, `SecurityAnalyst`, `Auditor`,
+  and `Admin` Cognito groups while retaining legacy `admin` and `app-user`.
+
+Set `cognito_admin_username` to an existing Cognito username during cutover so
+Terraform assigns that operator to the new `Admin` group.
 
 The incident-agent role can invoke Bedrock, consume only its SQS queue, and read
 only its Postgres connection secret. The monitored application's Terraform
@@ -78,6 +90,8 @@ workflows can assume them.
 ```bash
 terraform output ecr_repository_urls
 terraform output proxy_dataplane_role_arn
+terraform output nest_backend_role_arn
+terraform output webapp_database_secret_id
 terraform output application_certificate_arn
 terraform output cognito_user_pool_arn
 terraform output cognito_client_id

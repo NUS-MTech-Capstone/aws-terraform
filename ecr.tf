@@ -6,6 +6,8 @@ locals {
     "dendenmushi/proxy-dataplane",
     "dendenmushi/ddm-agent",
     "dendenmushi/incident-agent",
+    "dendenmushi/nest-backend",
+    "dendenmushi/angular",
   ])
 }
 

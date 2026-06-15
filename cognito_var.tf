@@ -6,10 +6,16 @@ variable "cognito_callback_urls" {
 
 variable "cognito_logout_urls" {
   type    = list(string)
-  default = ["https://api.ddm.keiyam.me/logout"]
+  default = ["https://api.ddm.keiyam.me/login"]
 }
 
 variable "cognito_domain_prefix" {
   type    = string
   default = "ddm-keiyam-dev"
+}
+
+variable "cognito_admin_username" {
+  description = "Existing Cognito username to add to the webapp Admin group during cutover."
+  type        = string
+  default     = ""
 }

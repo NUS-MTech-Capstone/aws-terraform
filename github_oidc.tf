@@ -3,9 +3,11 @@ locals {
     "sts",
     "proxy-controlplane",
     "session-manager",
-    "access-proxy",
+    "proxy-dataplane",
     "ddm-agent",
     "incident-agent",
+    "nest-backend",
+    "angular",
   ]
   github_oidc_provider_arn = var.github_oidc_provider_arn != "" ? var.github_oidc_provider_arn : aws_iam_openid_connect_provider.github[0].arn
 }
@@ -70,6 +72,7 @@ resource "aws_iam_role_policy" "github_ecr_push" {
         Effect = "Allow"
         Action = [
           "ecr:BatchCheckLayerAvailability",
+          "ecr:BatchGetImage",
           "ecr:CompleteLayerUpload",
           "ecr:GetDownloadUrlForLayer",
           "ecr:InitiateLayerUpload",

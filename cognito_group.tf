@@ -13,6 +13,34 @@ resource "aws_cognito_user_group" "app_user" {
   precedence   = 2
 }
 
+locals {
+  webapp_cognito_groups = {
+    Employee        = 20
+    TechnicalStaff  = 10
+    Manager         = 10
+    SecurityAnalyst = 10
+    Auditor         = 10
+    Admin           = 1
+  }
+}
+
+resource "aws_cognito_user_group" "webapp" {
+  for_each = local.webapp_cognito_groups
+
+  user_pool_id = aws_cognito_user_pool.this.id
+  name         = each.key
+  description  = "DenDenMushi web application ${each.key} role"
+  precedence   = each.value
+}
+
+resource "aws_cognito_user_in_group" "webapp_admin" {
+  count = var.cognito_admin_username == "" ? 0 : 1
+
+  user_pool_id = aws_cognito_user_pool.this.id
+  group_name   = aws_cognito_user_group.webapp["Admin"].name
+  username     = var.cognito_admin_username
+}
+
 resource "aws_cognito_user_pool_client" "this" {
   name         = "${var.name}-client-${var.env}"
   user_pool_id = aws_cognito_user_pool.this.id

@@ -42,7 +42,10 @@ for repository in \
   dendenmushi/session-manager \
   dendenmushi/proxy-controlplane \
   dendenmushi/proxy-dataplane \
-  dendenmushi/ddm-agent; do
+  dendenmushi/ddm-agent \
+  dendenmushi/incident-agent \
+  dendenmushi/nest-backend \
+  dendenmushi/angular; do
   if aws ecr describe-repositories \
     --region "${AWS_REGION}" \
     --repository-names "${repository}" >/dev/null 2>&1; then
@@ -52,4 +55,3 @@ for repository in \
     echo "ECR repository will be created: ${repository}"
   fi
 done
-
