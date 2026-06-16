@@ -53,6 +53,7 @@ resource "aws_iam_policy" "alb_controller" {
           "elasticloadbalancing:DeregisterTargets",
           "elasticloadbalancing:SetWebAcl",
           "elasticloadbalancing:ModifyListener",
+          "elasticloadbalancing:ModifyRule",
           "elasticloadbalancing:AddTags",
           "elasticloadbalancing:RemoveTags",
           "elasticloadbalancing:SetSecurityGroups",

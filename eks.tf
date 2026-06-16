@@ -5,7 +5,7 @@ data "aws_eks_cluster_auth" "this" {
 variable "eks_managed_node_desired_size" {
   description = "Desired size of the EKS managed node group"
   type        = number
-  default     = 1
+  default     = 2
 }
 
 variable "eks_managed_node_min_size" {
@@ -17,7 +17,7 @@ variable "eks_managed_node_min_size" {
 variable "eks_managed_node_max_size" {
   description = "Maximum size of the EKS managed node group"
   type        = number
-  default     = 1
+  default     = 2
 }
 
 module "eks" {
