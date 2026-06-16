@@ -118,12 +118,6 @@ terraform output cognito_domain
 terraform output configure_kubectl
 ```
 
-## Existing Test Stack
-
-The existing nginx, CloudFront, and root-domain test resources remain in this
-stack. They are independent from the `api.ddm.keiyam.me` application ingress.
-
-
 # 1. Initialize Terraform
 terraform init
 
@@ -168,11 +162,6 @@ terraform apply -var-file=secrets.tfvars
 
 ```
 
-After apply finishes, create the final root-account DNS record:
-
-ddm.keiyam.me -> terraform output cloudfront_domain_name
-
-
 ## AWS Config
 
 ```bash
@@ -207,6 +196,4 @@ kubectl get all -A
 ```
 
 # After done
-kubectl delete ingress dendenmushi-ok-dev -n default
-## above will hang so need manually delete alb
 terraform destroy -var-file=secrets.tfvars

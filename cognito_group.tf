@@ -4,6 +4,10 @@ resource "aws_cognito_user_group" "admin" {
   name         = "admin"
   description  = "Admin users"
   precedence   = 1
+
+  lifecycle {
+    ignore_changes = [description]
+  }
 }
 
 resource "aws_cognito_user_group" "app_user" {
@@ -31,6 +35,10 @@ resource "aws_cognito_user_group" "webapp" {
   name         = each.key
   description  = "DenDenMushi web application ${each.key} role"
   precedence   = each.value
+
+  lifecycle {
+    ignore_changes = [description]
+  }
 }
 
 resource "aws_cognito_user_pool_client" "this" {
