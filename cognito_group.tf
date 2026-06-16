@@ -33,14 +33,6 @@ resource "aws_cognito_user_group" "webapp" {
   precedence   = each.value
 }
 
-resource "aws_cognito_user_in_group" "webapp_admin" {
-  count = var.cognito_admin_username == "" ? 0 : 1
-
-  user_pool_id = aws_cognito_user_pool.this.id
-  group_name   = aws_cognito_user_group.webapp["Admin"].name
-  username     = var.cognito_admin_username
-}
-
 resource "aws_cognito_user_pool_client" "this" {
   name         = "${var.name}-client-${var.env}"
   user_pool_id = aws_cognito_user_pool.this.id

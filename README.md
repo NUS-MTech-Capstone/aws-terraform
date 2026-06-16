@@ -61,8 +61,19 @@ Terraform also creates:
 - The `Employee`, `TechnicalStaff`, `Manager`, `SecurityAnalyst`, `Auditor`,
   and `Admin` Cognito groups while retaining legacy `admin` and `app-user`.
 
-Set `cognito_admin_username` to an existing Cognito username during cutover so
-Terraform assigns that operator to the new `Admin` group.
+Create or assign at least one Cognito user to the capital `Admin` group before
+the first webapp deployment. Terraform creates the groups but does not manage
+individual user membership because Cognito pools configured with email aliases
+use internal UUID usernames that are awkward to manage declaratively.
+
+```bash
+POOL_ID=$(terraform output -raw cognito_user_pool_id)
+aws cognito-idp admin-add-user-to-group \
+  --region ap-southeast-1 \
+  --user-pool-id "${POOL_ID}" \
+  --username "<cognito-username-or-uuid>" \
+  --group-name Admin
+```
 
 If one of the exact webapp groups already exists in the user pool, import it
 before applying. For example:

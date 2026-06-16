@@ -15,7 +15,7 @@ variable "cognito_domain_prefix" {
 }
 
 variable "cognito_admin_username" {
-  description = "Existing Cognito username to add to the webapp Admin group during cutover."
+  description = "Deprecated. Create/add the initial webapp Admin user with AWS CLI before deployment."
   type        = string
   default     = ""
 }
