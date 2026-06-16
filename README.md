@@ -64,6 +64,14 @@ Terraform also creates:
 Set `cognito_admin_username` to an existing Cognito username during cutover so
 Terraform assigns that operator to the new `Admin` group.
 
+If one of the exact webapp groups already exists in the user pool, import it
+before applying. For example:
+
+```bash
+POOL_ID=$(terraform output -raw cognito_user_pool_id)
+terraform import 'aws_cognito_user_group.webapp["Admin"]' "${POOL_ID}/Admin"
+```
+
 The incident-agent role can invoke Bedrock, consume only its SQS queue, and read
 only its Postgres connection secret. The monitored application's Terraform
 stack should publish CloudWatch alarms to:

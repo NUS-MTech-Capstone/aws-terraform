@@ -17,8 +17,18 @@ resource "aws_sns_topic_policy" "incident_alerts" {
         Sid       = "OwnerAdministration"
         Effect    = "Allow"
         Principal = { AWS = "*" }
-        Action    = "SNS:*"
-        Resource  = aws_sns_topic.incident_alerts.arn
+        Action = [
+          "SNS:AddPermission",
+          "SNS:DeleteTopic",
+          "SNS:GetTopicAttributes",
+          "SNS:ListSubscriptionsByTopic",
+          "SNS:Publish",
+          "SNS:Receive",
+          "SNS:RemovePermission",
+          "SNS:SetTopicAttributes",
+          "SNS:Subscribe",
+        ]
+        Resource = aws_sns_topic.incident_alerts.arn
         Condition = {
           StringEquals = {
             "AWS:SourceOwner" = data.aws_caller_identity.current.account_id
