@@ -142,8 +142,9 @@ resource "aws_cognito_user_pool" "this" {
 
 
 resource "aws_cognito_user_pool_domain" "this" {
-  domain       = var.cognito_domain_prefix
-  user_pool_id = aws_cognito_user_pool.this.id
+  domain                = var.cognito_domain_prefix
+  user_pool_id          = aws_cognito_user_pool.this.id
+  managed_login_version = 2
 }
 
 output "cognito_user_pool_id" {

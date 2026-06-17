@@ -90,56 +90,13 @@ resource "aws_cognito_user_pool_client" "this" {
   ]
 }
 
-resource "aws_cognito_user_pool_ui_customization" "webapp" {
+resource "aws_cognito_managed_login_branding" "webapp" {
   user_pool_id = aws_cognito_user_pool.this.id
   client_id    = aws_cognito_user_pool_client.this.id
 
-  css = <<-CSS
-    .background-customizable {
-      background: #f5f7fb;
-    }
+  use_cognito_provided_values = true
 
-    .banner-customizable {
-      padding: 32px 0 16px;
-      background: linear-gradient(135deg, #2f1f75 0%, #6f42c1 100%);
-    }
-
-    .logo-customizable {
-      max-width: 220px;
-    }
-
-    .label-customizable {
-      color: #1f2937;
-      font-weight: 600;
-    }
-
-    .inputField-customizable {
-      border: 1px solid #d9d9d9;
-      border-radius: 8px;
-      height: 44px;
-    }
-
-    .submitButton-customizable {
-      background: #6f42c1;
-      border-color: #6f42c1;
-      border-radius: 8px;
-      height: 44px;
-      font-weight: 600;
-    }
-
-    .submitButton-customizable:hover {
-      background: #58319f;
-      border-color: #58319f;
-    }
-
-    .redirect-customizable {
-      color: #4b5563;
-    }
-
-    .legalText-customizable {
-      color: #4b5563;
-    }
-  CSS
+  depends_on = [aws_cognito_user_pool_domain.this]
 }
 
 output "cognito_client_id" {
@@ -155,5 +112,5 @@ output "cognito_app_user_group_name" {
 }
 
 output "cognito_login_url" {
-  value = "https://${aws_cognito_user_pool_domain.this.domain}.auth.${data.aws_region.current.id}.amazoncognito.com/login?client_id=${aws_cognito_user_pool_client.this.id}&response_type=code&scope=openid+email+profile&redirect_uri=${urlencode(var.cognito_callback_urls[0])}"
+  value = "https://${aws_cognito_user_pool_domain.this.domain}.auth.${data.aws_region.current.region}.amazoncognito.com/oauth2/authorize?client_id=${aws_cognito_user_pool_client.this.id}&response_type=code&scope=openid+email+profile&redirect_uri=${urlencode(var.cognito_callback_urls[0])}"
 }

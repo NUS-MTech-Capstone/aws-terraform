@@ -22,15 +22,15 @@ variable "eks_managed_node_max_size" {
 
 module "eks" {
   source  = "terraform-aws-modules/eks/aws"
-  version = "19.21"
+  version = "21.23.0"
 
-  cluster_name    = "${var.name}-cluster-${var.env}"
-  cluster_version = "1.35"
+  name               = "${var.name}-cluster-${var.env}"
+  kubernetes_version = "1.35"
 
   vpc_id     = module.vpc.vpc_id
   subnet_ids = module.vpc.private_subnets
 
-  cluster_endpoint_public_access = true
+  endpoint_public_access = true
 
   eks_managed_node_groups = {
     default = {
@@ -55,7 +55,7 @@ module "eks" {
   }
 
   # Allow communication between nodes and cluster
-  cluster_security_group_additional_rules = {
+  security_group_additional_rules = {
     ingress_nodes_ephemeral_ports_tcp = {
       description                = "Nodes on ephemeral ports"
       protocol                   = "tcp"

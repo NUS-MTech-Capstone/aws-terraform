@@ -58,8 +58,15 @@ Terraform also creates:
 - `dendenmushi/nest-backend` and `dendenmushi/angular` ECR repositories.
 - A least-privilege Nest IRSA role for the required Cognito admin operations.
 - A generated `ddm_webapp` database login and Secrets Manager connection URL.
+- A Cognito managed-login v2 domain and app-client branding style.
 - The `Employee`, `TechnicalStaff`, `Manager`, `SecurityAnalyst`, `Auditor`,
   and `Admin` Cognito groups while retaining legacy `admin` and `app-user`.
+
+Changing an existing Cognito domain between Hosted UI classic and managed login
+can take a few minutes to propagate and invalidates existing Cognito login-page
+sessions. Terraform manages the app-client branding style with
+`aws_cognito_managed_login_branding`; if a style was already created outside
+Terraform for the same app client, import it before applying.
 
 Create or assign at least one Cognito user to the capital `Admin` group before
 the first webapp deployment. Terraform creates the groups but does not manage
