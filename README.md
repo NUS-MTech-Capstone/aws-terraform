@@ -18,6 +18,7 @@ The infrastructure supports:
 - Cognito authentication at the public boundary
 - ECR repositories for deployable service images
 - EKS workload identities for Proxy Dataplane, Nest Backend, and Incident Agent
+- CloudWatch Container Insights and short-retention container logs
 - scoped Secrets Manager access for SSH target credentials and application
   database URLs
 - Route 53 and ACM resources for `api.ddm.keiyam.me`
@@ -27,6 +28,24 @@ The default EKS managed node group desires two `t3.medium` nodes and permits a
 minimum of one. A single `t3.medium` only exposes 17 pod slots, which is not
 enough for Kubernetes system add-ons, DenDenMushi workloads, and Argo CD
 together.
+
+## Low-Retention Observability
+
+This capstone environment intentionally keeps AWS observability data short-lived
+to reduce cost and sensitive operational metadata exposure:
+
+- EKS control-plane logging enables only `api`, `audit`, and `authenticator`.
+- The EKS control-plane log group uses one-day CloudWatch Logs retention.
+- Container Insights log groups for application, dataplane, host, performance,
+  and Prometheus data are pre-created with one-day retention.
+- The Amazon CloudWatch Observability EKS add-on is installed through EKS Pod
+  Identity with `CloudWatchAgentServerPolicy`.
+- Application traces are disabled by default in Kubernetes manifests. X-Ray or
+  OTLP trace export should only be enabled temporarily for a demo/debug session.
+
+CloudWatch Logs marks expired events for deletion at the retention boundary, but
+physical deletion can lag. CloudWatch metric retention is AWS-managed and cannot
+be reduced to one day, so keep custom metrics minimal.
 
 ## Architecture
 
