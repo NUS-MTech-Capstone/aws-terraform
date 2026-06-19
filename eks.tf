@@ -32,6 +32,22 @@ module "eks" {
 
   endpoint_public_access = true
 
+  access_entries = {
+    for key, principal_arn in local.teammate_access_eks_principal_arn_map : key => {
+      principal_arn     = principal_arn
+      kubernetes_groups = var.teammate_access_database_shell ? ["dendenmushi:database-shell"] : []
+
+      policy_associations = {
+        readonly = {
+          policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSViewPolicy"
+          access_scope = {
+            type = "cluster"
+          }
+        }
+      }
+    }
+  }
+
   enabled_log_types                      = ["api", "audit", "authenticator"]
   cloudwatch_log_group_retention_in_days = 1
 

@@ -4,6 +4,20 @@ variable "argocd_chart_version" {
   default     = "9.1.4"
 }
 
+variable "argocd_readonly_accounts" {
+  description = "Local Argo CD accounts with readonly access. Passwords are set out of band with the Argo CD CLI."
+  type        = set(string)
+  default     = []
+
+  validation {
+    condition = alltrue([
+      for account in var.argocd_readonly_accounts :
+      can(regex("^[a-zA-Z0-9._-]+$", account))
+    ])
+    error_message = "Argo CD readonly account names may contain only letters, numbers, dot, underscore, and hyphen."
+  }
+}
+
 resource "kubernetes_namespace" "argocd" {
   metadata {
     name = "argocd"
@@ -26,8 +40,28 @@ resource "helm_release" "argocd" {
   values = [
     yamlencode({
       configs = {
+        cm = merge(
+          {
+            "admin.enabled" = true
+          },
+          {
+            for account in var.argocd_readonly_accounts :
+            "accounts.${account}" => "login"
+          },
+          {
+            for account in var.argocd_readonly_accounts :
+            "accounts.${account}.enabled" => "true"
+          },
+        )
         params = {
           "server.insecure" = false
+        }
+        rbac = {
+          "policy.default" = "role:readonly"
+          "policy.csv" = join("\n", [
+            for account in sort(tolist(var.argocd_readonly_accounts)) :
+            "g, ${account}, role:readonly"
+          ])
         }
       }
       server = {

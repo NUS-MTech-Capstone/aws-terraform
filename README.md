@@ -238,6 +238,114 @@ kubectl -n argocd get secret argocd-initial-admin-secret \
 After the first login, rotate or remove the bootstrap admin credential according
 to the Argo CD hardening path you choose for the environment.
 
+### Teammate Access
+
+Teammate access is opt-in and managed by Terraform. The default policy grants:
+
+- readonly AWS diagnostics for CloudWatch Logs, CloudWatch metrics, EKS, EC2,
+  load balancers, ECR, RDS, Route 53, ACM, IAM metadata, tags, and secret
+  metadata
+- Cognito admin access scoped to this project's user pool
+- S3 admin access scoped to the project static-files bucket
+- readonly Kubernetes access through an EKS access entry
+- readonly Argo CD access through a local Argo CD account
+
+Set `teammate_access_database_shell=true` only for teammates who need direct
+SQL access. It adds `secretsmanager:GetSecretValue` for the project database
+connection secrets and Kubernetes RBAC in `dendenmushi` so they can run
+temporary `psql` pods.
+
+Create the IAM user, EKS access entry, and Argo CD local account:
+
+```bash
+terraform apply \
+  -var-file=secrets.tfvars \
+  -var='teammate_access_user_names=["<aws-iam-username>"]' \
+  -var='argocd_readonly_accounts=["<argocd-username>"]'
+```
+
+If the teammate already has an IAM user, add the existing username instead of
+asking Terraform to create a new IAM user:
+
+```bash
+terraform apply \
+  -var-file=secrets.tfvars \
+  -var='teammate_access_existing_user_names=["<aws-iam-username>"]' \
+  -var='argocd_readonly_accounts=["<argocd-username>"]'
+```
+
+Grant direct SQL shell access as well:
+
+```bash
+terraform apply \
+  -var-file=secrets.tfvars \
+  -var='teammate_access_existing_user_names=["<aws-iam-username>"]' \
+  -var='teammate_access_database_shell=true' \
+  -var='argocd_readonly_accounts=["<argocd-username>"]'
+```
+
+For an existing IAM role, pass the role ARN with
+`teammate_access_principal_arns`; that grants Kubernetes access through an EKS
+access entry. Attach AWS console and Secrets Manager permissions to the role
+separately if needed, because the IAM group policy applies only to IAM users.
+
+Only set `teammate_access_full_s3_admin=true` when the teammate really needs
+admin access to every S3 bucket in the account. The default avoids broad S3 read
+access because the Terraform state bucket may contain sensitive values.
+
+Set the IAM console password out of band so the password is not stored in
+Terraform state:
+
+```bash
+aws iam create-login-profile \
+  --user-name "<aws-iam-username>" \
+  --password-reset-required \
+  --password '<temporary-password>'
+```
+
+The teammate can configure readonly `kubectl` access with:
+
+```bash
+aws eks update-kubeconfig \
+  --name "$(terraform output -raw cluster_name)" \
+  --region ap-southeast-1
+
+kubectl auth can-i get pods -n dendenmushi
+kubectl auth can-i delete pods -n dendenmushi
+```
+
+The first command should return `yes`; the delete check should return `no`
+unless `teammate_access_database_shell=true` is enabled.
+
+With database shell access enabled, verify secret and temporary pod access:
+
+```bash
+aws secretsmanager get-secret-value \
+  --region ap-southeast-1 \
+  --secret-id dendenmushi/incident-agent/database-url-dev \
+  --query SecretString \
+  --output text
+
+kubectl auth can-i create pods -n dendenmushi
+kubectl auth can-i create pods/attach -n dendenmushi
+kubectl auth can-i delete pods -n dendenmushi
+```
+
+Set the Argo CD readonly account password after Terraform applies the account:
+
+```bash
+kubectl -n argocd port-forward svc/argocd-server 8080:443
+
+argocd login localhost:8080 --username admin --password '<admin-password>' --insecure
+argocd account update-password \
+  --account '<argocd-username>' \
+  --current-password '<admin-password>' \
+  --new-password '<temporary-password>'
+```
+
+The teammate can then log in through the same port-forwarded endpoint and view
+applications without sync or mutation permissions.
+
 ## How To Verify Success
 
 Terraform checks:
