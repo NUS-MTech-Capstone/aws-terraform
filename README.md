@@ -249,40 +249,77 @@ Teammate access is opt-in and managed by Terraform. The default policy grants:
 - S3 admin access scoped to the project static-files bucket
 - readonly Kubernetes access through an EKS access entry
 - readonly Argo CD access through a local Argo CD account
+- permission for the IAM user to change their own AWS console password
+- permission for the IAM user to manage their own AWS CLI access keys and MFA
+- AWS CloudShell access for browser-based CLI work
 
 Set `teammate_access_database_shell=true` only for teammates who need direct
 SQL access. It adds `secretsmanager:GetSecretValue` for the project database
 connection secrets and Kubernetes RBAC in `dendenmushi` so they can run
 temporary `psql` pods.
 
-Create the IAM user, EKS access entry, and Argo CD local account:
+Set `teammate_access_argocd_port_forward=true` for teammates who need to open
+the private Argo CD UI with `kubectl -n argocd port-forward
+svc/argocd-server 8080:443`.
+
+Create the IAM user, EKS access entry, and Argo CD local account. Keep these
+non-secret settings in an ignored local tfvars file so a later apply does not
+accidentally remove teammate access:
+
+```hcl
+teammate_access_user_names = [
+  "<aws-iam-username>",
+]
+
+argocd_readonly_accounts = [
+  "<argocd-username>",
+]
+```
+
+Then apply both tfvars files:
 
 ```bash
 terraform apply \
   -var-file=secrets.tfvars \
-  -var='teammate_access_user_names=["<aws-iam-username>"]' \
-  -var='argocd_readonly_accounts=["<argocd-username>"]'
+  -var-file=teammate-access.local.tfvars
 ```
 
 If the teammate already has an IAM user, add the existing username instead of
 asking Terraform to create a new IAM user:
 
-```bash
-terraform apply \
-  -var-file=secrets.tfvars \
-  -var='teammate_access_existing_user_names=["<aws-iam-username>"]' \
-  -var='argocd_readonly_accounts=["<argocd-username>"]'
+```hcl
+teammate_access_existing_user_names = [
+  "<aws-iam-username>",
+]
+
+argocd_readonly_accounts = [
+  "<argocd-username>",
+]
 ```
 
-Grant direct SQL shell access as well:
+Grant direct SQL shell access by adding this to the same local tfvars file:
 
-```bash
-terraform apply \
-  -var-file=secrets.tfvars \
-  -var='teammate_access_existing_user_names=["<aws-iam-username>"]' \
-  -var='teammate_access_database_shell=true' \
-  -var='argocd_readonly_accounts=["<argocd-username>"]'
+```hcl
+teammate_access_database_shell = true
 ```
+
+Grant Argo CD port-forward access by adding this to the same local tfvars file:
+
+```hcl
+teammate_access_argocd_port_forward = true
+```
+
+Attach any extra AWS managed policies by name:
+
+```hcl
+teammate_access_extra_aws_managed_policy_names = [
+  "SignInLocalDevelopmentAccess",
+]
+```
+
+Attach customer-managed policies from this AWS account with
+`teammate_access_extra_policy_names`, or pass full ARNs with
+`teammate_access_extra_policy_arns`.
 
 For an existing IAM role, pass the role ARN with
 `teammate_access_principal_arns`; that grants Kubernetes access through an EKS

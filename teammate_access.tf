@@ -28,6 +28,30 @@ variable "teammate_access_database_shell" {
   default     = false
 }
 
+variable "teammate_access_argocd_port_forward" {
+  description = "Allow teammate IAM users to port-forward the Argo CD server service in the argocd namespace."
+  type        = bool
+  default     = false
+}
+
+variable "teammate_access_extra_policy_names" {
+  description = "Additional customer-managed IAM policy names in this account to attach to the teammate access group."
+  type        = set(string)
+  default     = []
+}
+
+variable "teammate_access_extra_aws_managed_policy_names" {
+  description = "Additional AWS managed IAM policy names to attach to the teammate access group."
+  type        = set(string)
+  default     = []
+}
+
+variable "teammate_access_extra_policy_arns" {
+  description = "Additional IAM policy ARNs to attach to the teammate access group."
+  type        = set(string)
+  default     = []
+}
+
 locals {
   teammate_access_group_user_names = setunion(
     var.teammate_access_user_names,
@@ -55,6 +79,23 @@ locals {
       for arn in var.teammate_access_principal_arns :
       "principal_${substr(md5(arn), 0, 12)}" => arn
     },
+  )
+
+  teammate_access_extra_policy_arns = setunion(
+    var.teammate_access_extra_policy_arns,
+    toset([
+      for name in var.teammate_access_extra_policy_names :
+      "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/${name}"
+    ]),
+    toset([
+      for name in var.teammate_access_extra_aws_managed_policy_names :
+      "arn:aws:iam::aws:policy/${name}"
+    ]),
+  )
+
+  teammate_access_kubernetes_groups = concat(
+    var.teammate_access_database_shell ? ["dendenmushi:database-shell"] : [],
+    var.teammate_access_argocd_port_forward ? ["argocd:port-forward"] : [],
   )
 }
 
@@ -160,6 +201,93 @@ resource "aws_iam_group_policy_attachment" "teammate_access_infrastructure_reado
 
   group      = aws_iam_group.teammate_access[0].name
   policy_arn = aws_iam_policy.teammate_access_infrastructure_readonly[0].arn
+}
+
+resource "aws_iam_group_policy_attachment" "teammate_access_change_password" {
+  count = length(local.teammate_access_group_user_names) > 0 ? 1 : 0
+
+  group      = aws_iam_group.teammate_access[0].name
+  policy_arn = "arn:aws:iam::aws:policy/IAMUserChangePassword"
+}
+
+resource "aws_iam_policy" "teammate_access_cli_self_service" {
+  count = length(local.teammate_access_group_user_names) > 0 ? 1 : 0
+
+  name        = "${var.name}-${var.env}-teammate-cli-self-service"
+  description = "Teammate self-service IAM permissions for AWS CLI access keys and MFA."
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "ManageOwnAccessKeys"
+        Effect = "Allow"
+        Action = [
+          "iam:CreateAccessKey",
+          "iam:DeleteAccessKey",
+          "iam:GetUser",
+          "iam:ListAccessKeys",
+          "iam:UpdateAccessKey",
+        ]
+        Resource = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:user/$${aws:username}"
+      },
+      {
+        Sid    = "ManageOwnVirtualMFADevice"
+        Effect = "Allow"
+        Action = [
+          "iam:CreateVirtualMFADevice",
+          "iam:DeleteVirtualMFADevice",
+        ]
+        Resource = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:mfa/$${aws:username}"
+      },
+      {
+        Sid    = "ManageOwnMFAAssignment"
+        Effect = "Allow"
+        Action = [
+          "iam:DeactivateMFADevice",
+          "iam:EnableMFADevice",
+          "iam:ListMFADevices",
+          "iam:ResyncMFADevice",
+        ]
+        Resource = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:user/$${aws:username}"
+      },
+      {
+        Sid    = "ListAccountMFAAndAccessKeyMetadataForConsole"
+        Effect = "Allow"
+        Action = [
+          "iam:GetAccessKeyLastUsed",
+          "iam:ListVirtualMFADevices",
+        ]
+        Resource = "*"
+      },
+    ]
+  })
+
+  tags = {
+    Environment = var.env
+    Project     = var.name
+  }
+}
+
+resource "aws_iam_group_policy_attachment" "teammate_access_cli_self_service" {
+  count = length(local.teammate_access_group_user_names) > 0 ? 1 : 0
+
+  group      = aws_iam_group.teammate_access[0].name
+  policy_arn = aws_iam_policy.teammate_access_cli_self_service[0].arn
+}
+
+resource "aws_iam_group_policy_attachment" "teammate_access_cloudshell" {
+  count = length(local.teammate_access_group_user_names) > 0 ? 1 : 0
+
+  group      = aws_iam_group.teammate_access[0].name
+  policy_arn = "arn:aws:iam::aws:policy/AWSCloudShellFullAccess"
+}
+
+resource "aws_iam_group_policy_attachment" "teammate_access_extra" {
+  for_each = length(local.teammate_access_group_user_names) > 0 ? local.teammate_access_extra_policy_arns : toset([])
+
+  group      = aws_iam_group.teammate_access[0].name
+  policy_arn = each.value
 }
 
 resource "aws_iam_group_policy_attachment" "teammate_access_full_s3_admin" {
@@ -326,6 +454,58 @@ resource "kubernetes_role_binding" "teammate_access_database_shell" {
   }
 
   depends_on = [module.eks]
+}
+
+resource "kubernetes_role" "teammate_access_argocd_port_forward" {
+  count = length(local.teammate_access_eks_principal_arn_map) > 0 && var.teammate_access_argocd_port_forward ? 1 : 0
+
+  metadata {
+    name      = "argocd-server-port-forward"
+    namespace = kubernetes_namespace.argocd.metadata[0].name
+  }
+
+  rule {
+    api_groups = [""]
+    resources  = ["pods", "services"]
+    verbs      = ["get", "list"]
+  }
+
+  rule {
+    api_groups = [""]
+    resources  = ["pods/portforward"]
+    verbs      = ["create"]
+  }
+
+  depends_on = [
+    module.eks,
+    helm_release.argocd,
+  ]
+}
+
+resource "kubernetes_role_binding" "teammate_access_argocd_port_forward" {
+  count = length(local.teammate_access_eks_principal_arn_map) > 0 && var.teammate_access_argocd_port_forward ? 1 : 0
+
+  metadata {
+    name      = "argocd-server-port-forward"
+    namespace = kubernetes_namespace.argocd.metadata[0].name
+  }
+
+  role_ref {
+    api_group = "rbac.authorization.k8s.io"
+    kind      = "Role"
+    name      = kubernetes_role.teammate_access_argocd_port_forward[0].metadata[0].name
+  }
+
+  subject {
+    kind      = "Group"
+    name      = "argocd:port-forward"
+    api_group = "rbac.authorization.k8s.io"
+  }
+
+  depends_on = [
+    module.eks,
+    helm_release.argocd,
+  ]
 }
 
 output "teammate_access_iam_user_arns" {

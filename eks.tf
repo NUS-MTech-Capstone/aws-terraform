@@ -35,7 +35,7 @@ module "eks" {
   access_entries = {
     for key, principal_arn in local.teammate_access_eks_principal_arn_map : key => {
       principal_arn     = principal_arn
-      kubernetes_groups = var.teammate_access_database_shell ? ["dendenmushi:database-shell"] : []
+      kubernetes_groups = local.teammate_access_kubernetes_groups
 
       policy_associations = {
         readonly = {
