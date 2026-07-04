@@ -9,24 +9,46 @@ Primary responsibilities:
 - EKS cluster, node groups, IAM, OIDC, and cluster access.
 - VPC, subnets, routing, NAT, and security groups.
 - AWS Load Balancer Controller installation and IAM role.
-- ACM, CloudFront, DNS-related outputs, S3, RDS, and other AWS resources.
+- ACM, Route 53, DNS-related outputs, S3, RDS, Secrets Manager, Argo CD,
+  CloudWatch, SNS/SQS, and other AWS resources.
 
 Do not put application Kubernetes manifests here unless Terraform must own that
 resource. Workload manifests should live in the `kubernetes` repository so
-ArgoCD can use it as the GitOps source.
+Argo CD can use it as the GitOps source.
 
 ## Current Direction
 
-The MVP runs on EKS and uses:
+The Phase 1 baseline runs on EKS and uses:
 
 - AWS Load Balancer Controller.
 - ALB ingress with `ingressClassName: alb`.
 - ALB target type `ip`.
-- ECR images built by service repositories through shared GitHub Actions.
-- Kubernetes manifests managed outside Terraform.
+- ECR images built by service repositories through shared GitHub Actions and
+  promoted to the Kubernetes GitOps repository.
+- Argo CD installed privately in the cluster for workload reconciliation.
+- Cognito authentication at the public ALB boundary.
+- IRSA or EKS Pod Identity for workload AWS access.
+- Secrets Manager for target credentials and application database URLs.
+- CloudWatch alarms routed through SNS/SQS for the Incident Agent.
 
 Terraform should provision cluster infrastructure and AWS dependencies, not
 perform application deployment.
+
+## Phase 2 Agent Guardrails
+
+AI-agent infrastructure changes must stay bounded and explicit:
+
+- Add only the AWS resources required by a concrete agent consumer and delivery
+  requirement.
+- Prefer workload identity, least-privilege IAM, and short-lived STS capability
+  tokens over shared long-lived secrets.
+- Do not add infrastructure that brokers live terminal traffic.
+- Do not grant agents broad AWS, Kubernetes, database, or Secrets Manager
+  permissions for convenience.
+- Keep alarm, queue, and log retention intentional; avoid storing prompts,
+  command bodies, tokens, private keys, or terminal streams.
+- If Bedrock, LangSmith, evaluation storage, or new queues are added, document
+  data flow, retention, IAM scope, failure behavior, and cost impact.
 
 ## Change Rules
 
@@ -62,4 +84,4 @@ by this repo. If manifests need new AWS permissions, add the minimal IAM policy
 or IRSA role here and document which Kubernetes service account uses it.
 
 Avoid introducing service mesh, custom controllers, or complex networking until
-the MVP is working end to end.
+there is a demonstrated operational requirement.

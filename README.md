@@ -70,6 +70,7 @@ Route 53 + ACM
      - Session Manager
      - Proxy Control Plane
      - Proxy Dataplane
+     - Incident Agent
 
 Cognito authenticates browser users.
 IRSA grants workloads narrow AWS permissions.
@@ -429,7 +430,7 @@ curl -fsS https://api.ddm.keiyam.me/readyz
 
 Expected result:
 
-- the six active SSH-path deployments roll out successfully
+- the active application deployments roll out successfully
 - the ALB hostname is available on the `proxy-controlplane` ingress
 - Route 53 points `api.ddm.keiyam.me` to the ALB after the second Terraform
   apply
@@ -449,8 +450,8 @@ Expected result:
   Cognito login-page sessions.
 - If a Cognito managed-login branding style already exists for the app client,
   import it before applying Terraform.
-- The Incident Agent infrastructure is present, but incident-agent workflows
-  are outside the core SSH session verification path.
+- Incident Agent workflows are deployed for Phase 2 bounded triage and approved
+  remediation, but they remain outside the core SSH session verification path.
 - Destroying the stack should be planned carefully because EKS load balancers,
   Route 53 aliases, secrets, and target-host dependencies may have cross-repo
   ownership.
