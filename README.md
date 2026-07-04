@@ -42,6 +42,17 @@ to reduce cost and sensitive operational metadata exposure:
   Identity with `CloudWatchAgentServerPolicy`.
 - Application traces are disabled by default in Kubernetes manifests. X-Ray or
   OTLP trace export should only be enabled temporarily for a demo/debug session.
+- Application services emit CloudWatch Embedded Metric Format (EMF) JSON to
+  stdout in the `DenDenMushi` namespace. The alarm set in
+  `observability_alarms.tf` watches the hardening symptoms: authentication
+  failures, STS errors/latency, session start and assignment failures, stale
+  proxy pods, heartbeat misses, WebSocket disconnect errors, SSH failures, and
+  low proxy pod capacity.
+- `observability_alarms.tf` also creates the
+  `${name}-${env}-application-observability` CloudWatch dashboard for app-level
+  metric views and the operational alarm strip.
+- Alarm actions publish to the existing incident alert SNS topic, which is
+  subscribed to the Incident Agent SQS queue.
 
 CloudWatch Logs marks expired events for deletion at the retention boundary, but
 physical deletion can lag. CloudWatch metric retention is AWS-managed and cannot
