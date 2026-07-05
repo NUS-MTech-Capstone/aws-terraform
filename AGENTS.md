@@ -77,6 +77,19 @@ terraform init
 
 Do not run `terraform apply` or `terraform destroy` unless explicitly requested.
 
+When the user asks for an AWS Terraform plan or apply in this repository, include
+both local variable files:
+
+```bash
+terraform plan \
+  -var-file=secrets.tfvars \
+  -var-file=teammate-access.local.tfvars
+
+terraform apply \
+  -var-file=secrets.tfvars \
+  -var-file=teammate-access.local.tfvars
+```
+
 ## EKS Notes
 
 Application manifests should assume the AWS Load Balancer Controller is installed
