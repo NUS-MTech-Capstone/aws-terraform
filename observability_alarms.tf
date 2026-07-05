@@ -142,9 +142,32 @@ resource "aws_cloudwatch_dashboard" "application_observability" {
         }
       },
       {
-        type   = "alarm"
+        type   = "metric"
         x      = 0
         y      = 14
+        width  = 24
+        height = 6
+        properties = {
+          title   = "Incident Agent"
+          region  = var.aws_region
+          view    = "timeSeries"
+          stacked = false
+          period  = 300
+          metrics = [
+            [local.observability_namespace, "IncidentReceived", "Service", "incident-agent", "Environment", var.env, { stat = "Sum", label = "Incidents received" }],
+            [".", "PlanApproved", ".", ".", ".", ".", { stat = "Sum", label = "Plans approved" }],
+            [".", "RemediationExecuted", ".", ".", ".", ".", { stat = "Sum", label = "Remediations executed" }],
+            [".", "RemediationFailed", ".", ".", ".", ".", { stat = "Sum", yAxis = "right", label = "Remediation failures" }],
+            [".", "SQSMessageFailures", ".", ".", ".", ".", { stat = "Sum", yAxis = "right", label = "SQS failures" }],
+            [".", "BedrockErrors", ".", ".", ".", ".", { stat = "Sum", yAxis = "right", label = "Bedrock errors" }],
+            [".", "BedrockRequestLatencyMs", ".", ".", ".", ".", { stat = "p95", label = "Bedrock p95 latency" }],
+          ]
+        }
+      },
+      {
+        type   = "alarm"
+        x      = 0
+        y      = 20
         width  = 24
         height = 6
         properties = {
@@ -160,6 +183,9 @@ resource "aws_cloudwatch_dashboard" "application_observability" {
             aws_cloudwatch_metric_alarm.websocket_disconnect_errors.arn,
             aws_cloudwatch_metric_alarm.ssh_failures.arn,
             aws_cloudwatch_metric_alarm.proxy_pod_capacity_low.arn,
+            aws_cloudwatch_metric_alarm.incident_agent_remediation_failures.arn,
+            aws_cloudwatch_metric_alarm.incident_agent_sqs_failures.arn,
+            aws_cloudwatch_metric_alarm.incident_agent_bedrock_errors.arn,
           ]
         }
       },
@@ -381,6 +407,72 @@ resource "aws_cloudwatch_metric_alarm" "proxy_pod_capacity_low" {
 
   dimensions = {
     Service     = "session-manager"
+    Environment = var.env
+  }
+
+  tags = local.observability_common_alarm_tags
+}
+
+resource "aws_cloudwatch_metric_alarm" "incident_agent_remediation_failures" {
+  alarm_name          = "${var.name}-${var.env}-incident-agent-remediation-failures"
+  alarm_description   = jsonencode({ event = "RemediationFailed", windowSeconds = 300 })
+  namespace           = local.observability_namespace
+  metric_name         = "RemediationFailed"
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 1
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = local.observability_alarm_actions
+  ok_actions          = local.observability_alarm_actions
+
+  dimensions = {
+    Service     = "incident-agent"
+    Environment = var.env
+  }
+
+  tags = local.observability_common_alarm_tags
+}
+
+resource "aws_cloudwatch_metric_alarm" "incident_agent_sqs_failures" {
+  alarm_name          = "${var.name}-${var.env}-incident-agent-sqs-failures"
+  alarm_description   = jsonencode({ event = "SQSMessageFailures", windowSeconds = 300 })
+  namespace           = local.observability_namespace
+  metric_name         = "SQSMessageFailures"
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 3
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = local.observability_alarm_actions
+  ok_actions          = local.observability_alarm_actions
+
+  dimensions = {
+    Service     = "incident-agent"
+    Environment = var.env
+  }
+
+  tags = local.observability_common_alarm_tags
+}
+
+resource "aws_cloudwatch_metric_alarm" "incident_agent_bedrock_errors" {
+  alarm_name          = "${var.name}-${var.env}-incident-agent-bedrock-errors"
+  alarm_description   = jsonencode({ event = "BedrockErrors", windowSeconds = 300 })
+  namespace           = local.observability_namespace
+  metric_name         = "BedrockErrors"
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 3
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = local.observability_alarm_actions
+  ok_actions          = local.observability_alarm_actions
+
+  dimensions = {
+    Service     = "incident-agent"
     Environment = var.env
   }
 

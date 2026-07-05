@@ -46,8 +46,8 @@ to reduce cost and sensitive operational metadata exposure:
   stdout in the `DenDenMushi` namespace. The alarm set in
   `observability_alarms.tf` watches the hardening symptoms: authentication
   failures, STS errors/latency, session start and assignment failures, stale
-  proxy pods, heartbeat misses, WebSocket disconnect errors, SSH failures, and
-  low proxy pod capacity.
+  proxy pods, heartbeat misses, WebSocket disconnect errors, SSH failures, low
+  proxy pod capacity, and incident-agent remediation/SQS/Bedrock failures.
 - `observability_alarms.tf` also creates the
   `${name}-${env}-application-observability` CloudWatch dashboard for app-level
   metric views and the operational alarm strip.
