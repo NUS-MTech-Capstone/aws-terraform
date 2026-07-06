@@ -2,6 +2,7 @@ locals {
   ecr_repositories = toset([
     "dendenmushi/sts",
     "dendenmushi/session-manager",
+    "dendenmushi/audit-service",
     "dendenmushi/proxy-controlplane",
     "dendenmushi/proxy-dataplane",
     "dendenmushi/ddm-agent",

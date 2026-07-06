@@ -40,9 +40,11 @@ echo "Route 53 zone: ${ZONE_ID}"
 for repository in \
   dendenmushi/sts \
   dendenmushi/session-manager \
+  dendenmushi/audit-service \
   dendenmushi/proxy-controlplane \
   dendenmushi/proxy-dataplane \
   dendenmushi/ddm-agent \
+  dendenmushi/agent-controlplane \
   dendenmushi/incident-agent \
   dendenmushi/nest-backend \
   dendenmushi/angular; do

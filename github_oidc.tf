@@ -3,6 +3,7 @@ locals {
     "sts",
     "proxy-controlplane",
     "session-manager",
+    "audit-service",
     "proxy-dataplane",
     "ddm-agent",
     "agent-controlplane",

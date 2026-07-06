@@ -70,6 +70,7 @@ Route 53 + ACM
      - Nest Backend
      - STS
      - Session Manager
+     - Audit Service
      - Proxy Control Plane
      - Proxy Dataplane
      - Agent Control Plane
@@ -216,7 +217,7 @@ terraform apply \
 ### GitHub OIDC And Promotion
 
 The ECR push role is restricted to the service repositories declared in
-`github_oidc.tf`, including `nest-backend` and `angular`:
+`github_oidc.tf`, including `audit-service`, `nest-backend`, and `angular`:
 
 ```bash
 terraform output -raw github_ecr_push_role_arn
