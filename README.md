@@ -45,6 +45,11 @@ to reduce cost and sensitive operational metadata exposure:
   Identity with `CloudWatchAgentServerPolicy`.
 - Application traces are disabled by default in Kubernetes manifests. X-Ray or
   OTLP trace export should only be enabled temporarily for a demo/debug session.
+- Incident Agent LangSmith tracing is dev/debug observability only. Terraform
+  creates `dendenmushi/incident-agent/langsmith-api-key-dev` in Secrets
+  Manager and the Incident Agent role can read only that LangSmith key plus its
+  database URL. LangSmith may retain prompt and evidence metadata, so keep
+  tracing to explicit debug windows.
 - Application services emit CloudWatch Embedded Metric Format (EMF) JSON to
   stdout in the `DenDenMushi` namespace. The alarm set in
   `observability_alarms.tf` watches the hardening symptoms: authentication
@@ -166,6 +171,23 @@ Apply the base infrastructure:
 ```bash
 terraform apply -var-file=secrets.tfvars
 ```
+
+When enabling Incident Agent LangSmith tracing, set the API key in
+`secrets.tfvars` before applying:
+
+```hcl
+langsmith_api_key = "..."
+# Optional. Defaults to dendenmushi-incident-agent-dev.
+langsmith_project = "dendenmushi-incident-agent-dev"
+# Optional. Leave unset for the LangSmith default endpoint/workspace.
+langsmith_endpoint     = ""
+langsmith_workspace_id = ""
+```
+
+Terraform stores secret values in state even when variables are marked
+sensitive, so treat the Terraform backend and local plan files as sensitive.
+Do not expect traces from the dev deployment until the API key secret version
+has been created from this tfvars value.
 
 If the account already has a GitHub Actions OIDC provider, pass its ARN instead
 of creating a duplicate provider:

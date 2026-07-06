@@ -126,6 +126,26 @@ resource "aws_secretsmanager_secret_version" "incident_database_url" {
   )
 }
 
+locals {
+  incident_agent_langsmith_project = var.langsmith_project != "" ? var.langsmith_project : "${var.name}-incident-agent-${var.env}"
+}
+
+resource "aws_secretsmanager_secret" "incident_agent_langsmith_api_key" {
+  name                    = "${var.name}/incident-agent/langsmith-api-key-${var.env}"
+  recovery_window_in_days = 0
+
+  tags = {
+    Environment = var.env
+    Project     = var.name
+  }
+}
+
+resource "aws_secretsmanager_secret_version" "incident_agent_langsmith_api_key" {
+  count         = trimspace(nonsensitive(var.langsmith_api_key)) == "" ? 0 : 1
+  secret_id     = aws_secretsmanager_secret.incident_agent_langsmith_api_key.id
+  secret_string = trimspace(var.langsmith_api_key)
+}
+
 resource "aws_iam_policy" "incident_agent" {
   name = "${var.name}-incident-agent-${var.env}"
   policy = jsonencode({
@@ -150,9 +170,12 @@ resource "aws_iam_policy" "incident_agent" {
         Resource = aws_sqs_queue.incident_alerts.arn
       },
       {
-        Effect   = "Allow"
-        Action   = ["secretsmanager:GetSecretValue"]
-        Resource = aws_secretsmanager_secret.incident_database_url.arn
+        Effect = "Allow"
+        Action = ["secretsmanager:GetSecretValue"]
+        Resource = [
+          aws_secretsmanager_secret.incident_database_url.arn,
+          aws_secretsmanager_secret.incident_agent_langsmith_api_key.arn,
+        ]
       },
     ]
   })
@@ -212,4 +235,20 @@ output "incident_alerts_queue_url" {
 
 output "incident_database_secret_id" {
   value = aws_secretsmanager_secret.incident_database_url.id
+}
+
+output "incident_agent_langsmith_api_key_secret_id" {
+  value = aws_secretsmanager_secret.incident_agent_langsmith_api_key.id
+}
+
+output "incident_agent_langsmith_project" {
+  value = local.incident_agent_langsmith_project
+}
+
+output "incident_agent_langsmith_endpoint" {
+  value = var.langsmith_endpoint
+}
+
+output "incident_agent_langsmith_workspace_id" {
+  value = var.langsmith_workspace_id
 }

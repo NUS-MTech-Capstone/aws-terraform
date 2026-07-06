@@ -69,6 +69,31 @@ variable "postgres_db_password" {
   sensitive = true
 }
 
+variable "langsmith_api_key" {
+  description = "LangSmith API key for incident-agent tracing. Set in secrets.tfvars when tracing is enabled."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "langsmith_project" {
+  description = "LangSmith project name for incident-agent traces. Defaults to <name>-incident-agent-<env>."
+  type        = string
+  default     = ""
+}
+
+variable "langsmith_endpoint" {
+  description = "Optional LangSmith API endpoint. Leave empty for the LangSmith default endpoint."
+  type        = string
+  default     = ""
+}
+
+variable "langsmith_workspace_id" {
+  description = "Optional LangSmith workspace ID for API keys associated with multiple workspaces."
+  type        = string
+  default     = ""
+}
+
 variable "postgres_instance_class" {
   type    = string
   default = "db.t4g.micro"
