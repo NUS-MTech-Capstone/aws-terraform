@@ -51,8 +51,12 @@ to reduce cost and sensitive operational metadata exposure:
   proxy pod capacity, and agent-controlplane remediation plus incident-agent
   SQS/Bedrock failures.
 - `observability_alarms.tf` also creates the
-  `${name}-${env}-application-observability` CloudWatch dashboard for app-level
-  metric views and the operational alarm strip.
+  `${name}-${env}-application-observability` CloudWatch dashboard. The dashboard
+  includes live EKS Container Insights panels, AWS dependency panels for the
+  ALB, RDS, NAT Gateway, and Incident Agent SQS queue, optional target-host demo
+  panels, app-level EMF metric views, and the operational alarm strip. The
+  target-host panels populate after `target-hosts-setup` is applied and the
+  target CloudWatch Agent has emitted metrics.
 - Alarm actions publish to the existing incident alert SNS topic, which is
   subscribed to the Incident Agent SQS queue.
 
