@@ -17,8 +17,10 @@ The infrastructure supports:
   WebSocket terminal upgrades
 - Cognito authentication at the public boundary
 - ECR repositories for deployable service images
+- SNS and SQS resources for sanitized platform lifecycle metadata events
 - EKS workload identities for Proxy Dataplane, Nest Backend, Agent Control
-  Plane, and Incident Agent
+  Plane, Incident Agent, STS, Proxy Control Plane, Session Manager, and Audit
+  Service
 - CloudWatch Container Insights and short-retention container logs
 - scoped Secrets Manager access for SSH target credentials and application
   database URLs
@@ -59,6 +61,11 @@ to reduce cost and sensitive operational metadata exposure:
   target CloudWatch Agent has emitted metrics.
 - Alarm actions publish to the existing incident alert SNS topic, which is
   subscribed to the Incident Agent SQS queue.
+- The platform lifecycle timeline uses a separate SNS topic, `ddm-events-${env}`,
+  with an Audit Service queue subscription and a
+  bounded DLQ redrive policy. STS, Proxy Control Plane, Session Manager, and
+  Agent Control Plane can publish sanitized metadata; Audit Service consumes the
+  queue and stores queryable event metadata.
 
 CloudWatch Logs marks expired events for deletion at the retention boundary, but
 physical deletion can lag. CloudWatch metric retention is AWS-managed and cannot
@@ -84,6 +91,7 @@ Cognito authenticates browser users.
 IRSA grants workloads narrow AWS permissions.
 Secrets Manager stores generated database URLs and target credentials.
 ECR stores immutable service images.
+SNS and SQS carry sanitized lifecycle metadata to Audit Service.
 ```
 
 Ingress ownership after Kubernetes is deployed:
@@ -102,6 +110,21 @@ Ingress ownership after Kubernetes is deployed:
 Live terminal traffic remains direct between the browser, Proxy Dataplane, and
 target host. Terraform does not introduce a broker or alternate terminal data
 path.
+
+Relevant event-lane outputs:
+
+```bash
+terraform output -raw events_topic_arn
+terraform output -raw audit_events_queue_url
+terraform output -raw sts_role_arn
+terraform output -raw proxy_controlplane_role_arn
+terraform output -raw session_manager_role_arn
+terraform output -raw audit_service_role_arn
+```
+
+Producer roles can only publish to the lifecycle SNS topic. Audit Service can
+only receive, delete, change visibility for, and inspect attributes on the audit
+events queue.
 
 ## How To Run Local Demo
 
