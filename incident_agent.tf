@@ -173,6 +173,35 @@ output "incident_agent_role_arn" {
   value = module.iam_assumable_role_incident_agent.iam_role_arn
 }
 
+resource "aws_iam_policy" "agent_controlplane" {
+  name = "${var.name}-agent-controlplane-${var.env}"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["secretsmanager:GetSecretValue"]
+        Resource = aws_secretsmanager_secret.incident_database_url.arn
+      },
+    ]
+  })
+}
+
+module "iam_assumable_role_agent_controlplane" {
+  source  = "terraform-aws-modules/iam/aws//modules/iam-assumable-role-with-oidc"
+  version = "~> 5.0"
+
+  create_role                   = true
+  role_name                     = "${var.name}-agent-controlplane-${var.env}"
+  provider_url                  = module.eks.oidc_provider
+  role_policy_arns              = [aws_iam_policy.agent_controlplane.arn]
+  oidc_fully_qualified_subjects = ["system:serviceaccount:dendenmushi:agent-controlplane"]
+}
+
+output "agent_controlplane_role_arn" {
+  value = module.iam_assumable_role_agent_controlplane.iam_role_arn
+}
+
 output "incident_alerts_topic_arn" {
   value = aws_sns_topic.incident_alerts.arn
 }

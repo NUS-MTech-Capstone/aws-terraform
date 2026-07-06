@@ -5,6 +5,7 @@ locals {
     "session-manager",
     "proxy-dataplane",
     "ddm-agent",
+    "agent-controlplane",
     "incident-agent",
     "nest-backend",
     "angular",

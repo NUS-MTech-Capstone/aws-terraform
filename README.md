@@ -17,7 +17,8 @@ The infrastructure supports:
   WebSocket terminal upgrades
 - Cognito authentication at the public boundary
 - ECR repositories for deployable service images
-- EKS workload identities for Proxy Dataplane, Nest Backend, and Incident Agent
+- EKS workload identities for Proxy Dataplane, Nest Backend, Agent Control
+  Plane, and Incident Agent
 - CloudWatch Container Insights and short-retention container logs
 - scoped Secrets Manager access for SSH target credentials and application
   database URLs
@@ -47,7 +48,8 @@ to reduce cost and sensitive operational metadata exposure:
   `observability_alarms.tf` watches the hardening symptoms: authentication
   failures, STS errors/latency, session start and assignment failures, stale
   proxy pods, heartbeat misses, WebSocket disconnect errors, SSH failures, low
-  proxy pod capacity, and incident-agent remediation/SQS/Bedrock failures.
+  proxy pod capacity, and agent-controlplane remediation plus incident-agent
+  SQS/Bedrock failures.
 - `observability_alarms.tf` also creates the
   `${name}-${env}-application-observability` CloudWatch dashboard for app-level
   metric views and the operational alarm strip.
@@ -70,6 +72,7 @@ Route 53 + ACM
      - Session Manager
      - Proxy Control Plane
      - Proxy Dataplane
+     - Agent Control Plane
      - Incident Agent
 
 Cognito authenticates browser users.
@@ -86,7 +89,9 @@ Ingress ownership after Kubernetes is deployed:
 /ddm/*                    -> Nest Backend
 /sessions/*/ws            -> Proxy Dataplane
 /sessions/*               -> Proxy Control Plane
-/incidents*               -> Incident Agent
+/agentic-ai/health        -> Agent Control Plane
+/alerts*                  -> Agent Control Plane
+/incidents*               -> Agent Control Plane
 ```
 
 Live terminal traffic remains direct between the browser, Proxy Dataplane, and
@@ -450,8 +455,9 @@ Expected result:
   Cognito login-page sessions.
 - If a Cognito managed-login branding style already exists for the app client,
   import it before applying Terraform.
-- Incident Agent workflows are deployed for Phase 2 bounded triage and approved
-  remediation, but they remain outside the core SSH session verification path.
+- Incident Agent worker flows and Agent Control Plane approval/remediation APIs
+  are deployed for Phase 2, but they remain outside the core SSH session
+  verification path.
 - Destroying the stack should be planned carefully because EKS load balancers,
   Route 53 aliases, secrets, and target-host dependencies may have cross-repo
   ownership.
