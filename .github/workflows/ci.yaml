@@ -1,0 +1,24 @@
+name: Terraform CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - dev
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  terraform:
+    uses: NUS-MTech-Capstone/github-actions-shared/.github/workflows/terraform-ci.yaml@main
+    with:
+      terraform-version: "1.14.5"
+      tfvars-json: |
+        {
+          "postgres_db_password": "ci-placeholder-password"
+        }
+    secrets:
+      AWS_ROLE_ARN: ${{ secrets.AWS_TERRAFORM_PLAN_ROLE_ARN }}
