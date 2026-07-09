@@ -1,6 +1,54 @@
+resource "aws_kms_key" "incident_alerts_sns" {
+  description             = "Encrypts Incident Agent SNS alarm notifications."
+  deletion_window_in_days = 7
+  enable_key_rotation     = true
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowAccountAdministration"
+        Effect = "Allow"
+        Principal = {
+          AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
+        }
+        Action   = "kms:*"
+        Resource = "*"
+      },
+      {
+        Sid    = "AllowCloudWatchAlarmsPublish"
+        Effect = "Allow"
+        Principal = {
+          Service = "cloudwatch.amazonaws.com"
+        }
+        Action = [
+          "kms:Decrypt",
+          "kms:GenerateDataKey*",
+        ]
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "aws:SourceAccount" = data.aws_caller_identity.current.account_id
+          }
+        }
+      },
+    ]
+  })
+
+  tags = {
+    Environment = var.env
+    Project     = var.name
+  }
+}
+
+resource "aws_kms_alias" "incident_alerts_sns" {
+  name          = "alias/${var.name}-incident-alerts-sns-${var.env}"
+  target_key_id = aws_kms_key.incident_alerts_sns.key_id
+}
+
 resource "aws_sns_topic" "incident_alerts" {
   name              = "${var.name}-incident-alerts-${var.env}"
-  kms_master_key_id = "alias/aws/sns"
+  kms_master_key_id = aws_kms_key.incident_alerts_sns.arn
 
   tags = {
     Environment = var.env

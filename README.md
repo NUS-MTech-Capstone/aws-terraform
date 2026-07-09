@@ -65,7 +65,9 @@ to reduce cost and sensitive operational metadata exposure:
   target-host panels populate after `target-hosts-setup` is applied and the
   target CloudWatch Agent has emitted metrics.
 - Alarm actions publish to the existing incident alert SNS topic, which is
-  subscribed to the Incident Agent SQS queue.
+  subscribed to the Incident Agent SQS queue. The topic uses a
+  customer-managed KMS key instead of `alias/aws/sns` so CloudWatch Alarms has
+  explicit key permission to publish encrypted alarm notifications.
 - The platform lifecycle timeline uses a separate SNS topic, `ddm-events-${env}`,
   with an Audit Service queue subscription and a
   bounded DLQ redrive policy. STS, Proxy Control Plane, Session Manager, and
