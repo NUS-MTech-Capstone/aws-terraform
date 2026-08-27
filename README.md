@@ -265,6 +265,59 @@ terraform apply \
   -var='application_alb_dns_name=<ALB DNS name>'
 ```
 
+## Suspend Costly AWS Resources
+
+For a multi-month pause, use the single suspend script instead of manually
+deleting resources from the console:
+
+```bash
+cd aws-terraform
+CONFIRM_DESTROY=destroy-costly-aws ./scripts/suspend-costly-aws.sh down
+```
+
+The script first writes an ignored local backup under
+`aws-terraform/ignore/aws-cost-suspension/<timestamp>/`. That directory is
+sensitive local state: it contains Terraform/AWS/Kubernetes inventory, Cognito
+metadata, ECR image metadata, and PostgreSQL custom-format dumps for the webapp
+and incident/session databases. Do not commit or share it.
+
+The teardown removes the resources that materially drive the idle bill:
+
+- Kubernetes ingresses and the Kubernetes-owned application ALB.
+- Target-host EC2 infrastructure from `target-hosts-setup`.
+- The RDS PostgreSQL instance after the local pg_dump backups are captured.
+- EKS add-ons, Helm releases, managed node group, and EKS control plane.
+- The NAT gateway, private NAT route, and NAT EIP.
+
+Route 53 hosted zones are never deleted. The script removes only the application
+alias record for the deleted ALB. It leaves low-cost restore anchors such as
+ECR repositories/images, Cognito, IAM, Secrets Manager entries, SQS/SNS, S3,
+subnets, route tables, and the VPC skeleton unless Terraform must recreate a
+dependent object. Keeping the VPC skeleton is intentional: VPCs, subnets, route
+tables, security groups, and the gateway S3 endpoint do not have the same idle
+monthly cost profile as EKS, RDS, ALB, NAT gateway, and EC2, and preserving them
+makes a future demo restore less error-prone.
+
+To inspect without deleting anything:
+
+```bash
+./scripts/suspend-costly-aws.sh inventory
+./scripts/suspend-costly-aws.sh backup
+```
+
+To restore later, keep the backup directory available and run:
+
+```bash
+BACKUP_DIR=ignore/aws-cost-suspension/<timestamp> \
+  ./scripts/suspend-costly-aws.sh up
+```
+
+`up` reapplies the main Terraform stack, recreates the target host, runs the
+Kubernetes bootstrap, restores PostgreSQL from the saved dumps by default, runs
+`kubernetes/scripts/verify-aws.sh`, then applies the final Route 53 alias using
+the new ALB DNS name. Set `RESTORE_DB=false` only when the database contents are
+intentionally disposable.
+
 ### GitHub OIDC And Promotion
 
 The ECR push role is restricted to the service repositories declared in
