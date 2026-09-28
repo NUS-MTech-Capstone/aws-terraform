@@ -409,7 +409,7 @@ resource "kubernetes_role" "teammate_access_database_shell" {
 
   metadata {
     name      = "database-shell"
-    namespace = "dendenmushi"
+    namespace = kubernetes_namespace.dendenmushi.metadata[0].name
   }
 
   rule {
@@ -438,7 +438,7 @@ resource "kubernetes_role_binding" "teammate_access_database_shell" {
 
   metadata {
     name      = "database-shell"
-    namespace = "dendenmushi"
+    namespace = kubernetes_namespace.dendenmushi.metadata[0].name
   }
 
   role_ref {

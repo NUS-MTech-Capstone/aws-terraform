@@ -2,7 +2,7 @@ locals {
   observability_namespace                  = "DenDenMushi"
   observability_cluster_name               = module.eks.cluster_name
   observability_kubernetes_namespace       = "dendenmushi"
-  observability_application_alb_arn_suffix = try(data.aws_lb.application[0].arn_suffix, "")
+  observability_application_alb_arn_suffix = coalesce(try(data.aws_lb.application[0].arn_suffix, null), "not-configured")
   observability_nat_gateway_id             = try(module.vpc.natgw_ids[0], "")
   observability_target_host_namespace      = "DendenMushi/TargetHost"
   observability_target_host_id             = "host-dev-1"

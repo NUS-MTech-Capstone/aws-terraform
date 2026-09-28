@@ -18,6 +18,19 @@ variable "argocd_readonly_accounts" {
   }
 }
 
+resource "kubernetes_namespace" "dendenmushi" {
+  metadata {
+    name = "dendenmushi"
+
+    labels = {
+      "app.kubernetes.io/name"    = "dendenmushi"
+      "app.kubernetes.io/part-of" = "dendenmushi"
+    }
+  }
+
+  depends_on = [module.eks]
+}
+
 resource "kubernetes_namespace" "argocd" {
   metadata {
     name = "argocd"

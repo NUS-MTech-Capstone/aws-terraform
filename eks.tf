@@ -32,6 +32,16 @@ module "eks" {
 
   endpoint_public_access = true
 
+  enable_cluster_creator_admin_permissions = true
+
+  addons = {
+    coredns    = {}
+    kube-proxy = {}
+    vpc-cni = {
+      before_compute = true
+    }
+  }
+
   access_entries = {
     for key, principal_arn in local.teammate_access_eks_principal_arn_map : key => {
       principal_arn     = principal_arn
