@@ -28,6 +28,12 @@ resource "kubernetes_namespace" "dendenmushi" {
     }
   }
 
+  lifecycle {
+    ignore_changes = [
+      metadata[0].annotations["argocd.argoproj.io/tracking-id"],
+    ]
+  }
+
   depends_on = [module.eks]
 }
 
