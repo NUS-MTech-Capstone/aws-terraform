@@ -1,7 +1,7 @@
 locals {
   observability_namespace                  = "DenDenMushi"
   observability_cluster_name               = module.eks.cluster_name
-  observability_kubernetes_namespace       = "dendenmushi"
+  observability_kubernetes_namespaces      = ["dendenmushi-ssh", "dendenmushi-agentic", "dendenmushi-webapp"]
   observability_application_alb_arn_suffix = coalesce(try(data.aws_lb.application[0].arn_suffix, null), "not-configured")
   observability_nat_gateway_id             = try(module.vpc.natgw_ids[0], "")
   observability_target_host_namespace      = "DendenMushi/TargetHost"
@@ -91,10 +91,10 @@ resource "aws_cloudwatch_dashboard" "application_observability" {
           view    = "timeSeries"
           stacked = false
           period  = 60
-          metrics = [
-            [{ expression = "SEARCH('{ContainerInsights,ClusterName,Namespace} MetricName=\"namespace_number_of_running_pods\" ClusterName=\"${local.observability_cluster_name}\" Namespace=\"${local.observability_kubernetes_namespace}\"', 'Average', 60)", label = "Running pods", id = "namespace_running_pods" }],
-            [{ expression = "SEARCH('{ContainerInsights,ClusterName,Namespace} MetricName=\"namespace_number_of_pods\" ClusterName=\"${local.observability_cluster_name}\" Namespace=\"${local.observability_kubernetes_namespace}\"', 'Average', 60)", label = "Total pods", id = "namespace_total_pods" }],
-          ]
+          metrics = concat(
+            [for namespace in local.observability_kubernetes_namespaces : [{ expression = "SEARCH('{ContainerInsights,ClusterName,Namespace} MetricName=\"namespace_number_of_running_pods\" ClusterName=\"${local.observability_cluster_name}\" Namespace=\"${namespace}\"', 'Average', 60)", label = "${namespace} running", id = "running_${replace(namespace, "-", "_")}" }]],
+            [for namespace in local.observability_kubernetes_namespaces : [{ expression = "SEARCH('{ContainerInsights,ClusterName,Namespace} MetricName=\"namespace_number_of_pods\" ClusterName=\"${local.observability_cluster_name}\" Namespace=\"${namespace}\"', 'Average', 60)", label = "${namespace} total", id = "total_${replace(namespace, "-", "_")}" }]],
+          )
         }
       },
       {
@@ -109,9 +109,7 @@ resource "aws_cloudwatch_dashboard" "application_observability" {
           view    = "timeSeries"
           stacked = false
           period  = 60
-          metrics = [
-            [{ expression = "SEARCH('{ContainerInsights,ClusterName,Namespace,PodName} MetricName=\"pod_cpu_utilization\" ClusterName=\"${local.observability_cluster_name}\" Namespace=\"${local.observability_kubernetes_namespace}\"', 'Average', 60)", label = "Pod CPU %", id = "pod_cpu_utilization" }],
-          ]
+          metrics = [for namespace in local.observability_kubernetes_namespaces : [{ expression = "SEARCH('{ContainerInsights,ClusterName,Namespace,PodName} MetricName=\"pod_cpu_utilization\" ClusterName=\"${local.observability_cluster_name}\" Namespace=\"${namespace}\"', 'Average', 60)", label = "${namespace} pod CPU %", id = "cpu_${replace(namespace, "-", "_")}" }]]
         }
       },
       {
@@ -126,9 +124,7 @@ resource "aws_cloudwatch_dashboard" "application_observability" {
           view    = "timeSeries"
           stacked = false
           period  = 60
-          metrics = [
-            [{ expression = "SEARCH('{ContainerInsights,ClusterName,Namespace,PodName} MetricName=\"pod_memory_utilization\" ClusterName=\"${local.observability_cluster_name}\" Namespace=\"${local.observability_kubernetes_namespace}\"', 'Average', 60)", label = "Pod memory %", id = "pod_memory_utilization" }],
-          ]
+          metrics = [for namespace in local.observability_kubernetes_namespaces : [{ expression = "SEARCH('{ContainerInsights,ClusterName,Namespace,PodName} MetricName=\"pod_memory_utilization\" ClusterName=\"${local.observability_cluster_name}\" Namespace=\"${namespace}\"', 'Average', 60)", label = "${namespace} pod memory %", id = "memory_${replace(namespace, "-", "_")}" }]]
         }
       },
       {
@@ -143,11 +139,11 @@ resource "aws_cloudwatch_dashboard" "application_observability" {
           view    = "timeSeries"
           stacked = false
           period  = 60
-          metrics = [
-            [{ expression = "SEARCH('{ContainerInsights,ClusterName,Namespace,PodName} MetricName=\"pod_number_of_container_restarts\" ClusterName=\"${local.observability_cluster_name}\" Namespace=\"${local.observability_kubernetes_namespace}\"', 'Sum', 60)", label = "Container restarts", id = "pod_restarts", yAxis = "right" }],
-            [{ expression = "SEARCH('{ContainerInsights,ClusterName,Namespace,PodName} MetricName=\"pod_network_rx_bytes\" ClusterName=\"${local.observability_cluster_name}\" Namespace=\"${local.observability_kubernetes_namespace}\"', 'Sum', 60)", label = "Pod network RX bytes", id = "pod_network_rx_bytes" }],
-            [{ expression = "SEARCH('{ContainerInsights,ClusterName,Namespace,PodName} MetricName=\"pod_network_tx_bytes\" ClusterName=\"${local.observability_cluster_name}\" Namespace=\"${local.observability_kubernetes_namespace}\"', 'Sum', 60)", label = "Pod network TX bytes", id = "pod_network_tx_bytes" }],
-          ]
+          metrics = concat(
+            [for namespace in local.observability_kubernetes_namespaces : [{ expression = "SEARCH('{ContainerInsights,ClusterName,Namespace,PodName} MetricName=\"pod_number_of_container_restarts\" ClusterName=\"${local.observability_cluster_name}\" Namespace=\"${namespace}\"', 'Sum', 60)", label = "${namespace} restarts", id = "restarts_${replace(namespace, "-", "_")}", yAxis = "right" }]],
+            [for namespace in local.observability_kubernetes_namespaces : [{ expression = "SEARCH('{ContainerInsights,ClusterName,Namespace,PodName} MetricName=\"pod_network_rx_bytes\" ClusterName=\"${local.observability_cluster_name}\" Namespace=\"${namespace}\"', 'Sum', 60)", label = "${namespace} RX bytes", id = "rx_${replace(namespace, "-", "_")}" }]],
+            [for namespace in local.observability_kubernetes_namespaces : [{ expression = "SEARCH('{ContainerInsights,ClusterName,Namespace,PodName} MetricName=\"pod_network_tx_bytes\" ClusterName=\"${local.observability_cluster_name}\" Namespace=\"${namespace}\"', 'Sum', 60)", label = "${namespace} TX bytes", id = "tx_${replace(namespace, "-", "_")}" }]],
+          )
         }
       },
       {

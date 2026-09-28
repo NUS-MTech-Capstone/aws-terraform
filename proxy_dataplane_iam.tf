@@ -23,10 +23,9 @@ module "iam_assumable_role_proxy_dataplane" {
   role_name                     = "${var.name}-proxy-dataplane-${var.env}"
   provider_url                  = module.eks.oidc_provider
   role_policy_arns              = [aws_iam_policy.proxy_dataplane_secrets.arn]
-  oidc_fully_qualified_subjects = ["system:serviceaccount:dendenmushi:proxy-dataplane"]
+  oidc_fully_qualified_subjects = ["system:serviceaccount:dendenmushi-ssh:proxy-dataplane"]
 }
 
 output "proxy_dataplane_role_arn" {
   value = module.iam_assumable_role_proxy_dataplane.iam_role_arn
 }
-

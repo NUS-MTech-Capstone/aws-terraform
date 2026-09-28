@@ -237,7 +237,7 @@ module "iam_assumable_role_incident_agent" {
   role_name                     = "${var.name}-incident-agent-${var.env}"
   provider_url                  = module.eks.oidc_provider
   role_policy_arns              = [aws_iam_policy.incident_agent.arn]
-  oidc_fully_qualified_subjects = ["system:serviceaccount:dendenmushi:incident-agent"]
+  oidc_fully_qualified_subjects = ["system:serviceaccount:dendenmushi-agentic:incident-agent"]
 }
 
 output "incident_agent_role_arn" {
@@ -266,7 +266,7 @@ module "iam_assumable_role_agent_controlplane" {
   role_name                     = "${var.name}-agent-controlplane-${var.env}"
   provider_url                  = module.eks.oidc_provider
   role_policy_arns              = [aws_iam_policy.agent_controlplane.arn]
-  oidc_fully_qualified_subjects = ["system:serviceaccount:dendenmushi:agent-controlplane"]
+  oidc_fully_qualified_subjects = ["system:serviceaccount:dendenmushi-agentic:agent-controlplane"]
 }
 
 output "agent_controlplane_role_arn" {

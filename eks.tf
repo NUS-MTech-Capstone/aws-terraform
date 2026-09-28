@@ -39,6 +39,12 @@ module "eks" {
     kube-proxy = {}
     vpc-cni = {
       before_compute = true
+      configuration_values = jsonencode({
+        enableNetworkPolicy = "true"
+        env = {
+          NETWORK_POLICY_ENFORCING_MODE = "standard"
+        }
+      })
     }
   }
 

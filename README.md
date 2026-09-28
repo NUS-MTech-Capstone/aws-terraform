@@ -480,8 +480,8 @@ aws eks update-kubeconfig \
   --name "$(terraform output -raw cluster_name)" \
   --region ap-southeast-1
 
-kubectl auth can-i get pods -n dendenmushi
-kubectl auth can-i delete pods -n dendenmushi
+kubectl auth can-i get pods -n dendenmushi-ssh
+kubectl auth can-i delete pods -n dendenmushi-ssh
 ```
 
 The first command should return `yes`; the delete check should return `no`
@@ -496,9 +496,10 @@ aws secretsmanager get-secret-value \
   --query SecretString \
   --output text
 
-kubectl auth can-i create pods -n dendenmushi
-kubectl auth can-i create pods/attach -n dendenmushi
-kubectl auth can-i delete pods -n dendenmushi
+kubectl auth can-i create pods -n dendenmushi-ssh
+kubectl auth can-i create pods/attach -n dendenmushi-ssh
+kubectl auth can-i delete pods -n dendenmushi-ssh
+kubectl auth can-i create pods -n dendenmushi-webapp
 ```
 
 Set the Argo CD readonly account password after Terraform applies the account:
@@ -539,7 +540,9 @@ Cluster checks:
 cd ../kubernetes
 ./scripts/verify-aws.sh
 kubectl get application dendenmushi-dev -n argocd
-kubectl get pods,ingress -n dendenmushi
+kubectl get pods,ingress -n dendenmushi-ssh
+kubectl get pods,ingress -n dendenmushi-agentic
+kubectl get pods,ingress -n dendenmushi-webapp
 ```
 
 Application checks:

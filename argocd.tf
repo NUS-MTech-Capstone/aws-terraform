@@ -18,13 +18,31 @@ variable "argocd_readonly_accounts" {
   }
 }
 
+locals {
+  dendenmushi_namespaces = {
+    "dendenmushi-ssh"     = "ssh"
+    "dendenmushi-agentic" = "agentic"
+    "dendenmushi-webapp"  = "webapp"
+  }
+}
+
 resource "kubernetes_namespace" "dendenmushi" {
+  for_each = local.dendenmushi_namespaces
+
   metadata {
-    name = "dendenmushi"
+    name = each.key
 
     labels = {
-      "app.kubernetes.io/name"    = "dendenmushi"
+      "app.kubernetes.io/name"    = each.key
       "app.kubernetes.io/part-of" = "dendenmushi"
+      "dendenmushi.io/tier"       = each.value
+
+      "pod-security.kubernetes.io/enforce"         = "baseline"
+      "pod-security.kubernetes.io/enforce-version" = "v1.35"
+      "pod-security.kubernetes.io/audit"           = "restricted"
+      "pod-security.kubernetes.io/audit-version"   = "v1.35"
+      "pod-security.kubernetes.io/warn"            = "restricted"
+      "pod-security.kubernetes.io/warn-version"    = "v1.35"
     }
   }
 

@@ -77,7 +77,7 @@ module "iam_assumable_role_nest_backend" {
   role_name                     = "${var.name}-nest-backend-${var.env}"
   provider_url                  = module.eks.oidc_provider
   role_policy_arns              = [aws_iam_policy.nest_backend.arn]
-  oidc_fully_qualified_subjects = ["system:serviceaccount:dendenmushi:nest-backend"]
+  oidc_fully_qualified_subjects = ["system:serviceaccount:dendenmushi-webapp:nest-backend"]
 }
 
 output "nest_backend_role_arn" {

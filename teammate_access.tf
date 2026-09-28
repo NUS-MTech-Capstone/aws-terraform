@@ -23,7 +23,7 @@ variable "teammate_access_full_s3_admin" {
 }
 
 variable "teammate_access_database_shell" {
-  description = "Allow teammate IAM users to read project database connection secrets and create temporary database client pods in the dendenmushi namespace."
+  description = "Allow teammate IAM users to read project database connection secrets and create temporary database client pods in the SSH and webapp namespaces."
   type        = bool
   default     = false
 }
@@ -405,11 +405,14 @@ resource "aws_iam_group_policy_attachment" "teammate_access_database_shell" {
 }
 
 resource "kubernetes_role" "teammate_access_database_shell" {
-  count = length(local.teammate_access_eks_principal_arn_map) > 0 && var.teammate_access_database_shell ? 1 : 0
+  for_each = length(local.teammate_access_eks_principal_arn_map) > 0 && var.teammate_access_database_shell ? toset([
+    "dendenmushi-ssh",
+    "dendenmushi-webapp",
+  ]) : toset([])
 
   metadata {
     name      = "database-shell"
-    namespace = kubernetes_namespace.dendenmushi.metadata[0].name
+    namespace = kubernetes_namespace.dendenmushi[each.key].metadata[0].name
   }
 
   rule {
@@ -434,17 +437,20 @@ resource "kubernetes_role" "teammate_access_database_shell" {
 }
 
 resource "kubernetes_role_binding" "teammate_access_database_shell" {
-  count = length(local.teammate_access_eks_principal_arn_map) > 0 && var.teammate_access_database_shell ? 1 : 0
+  for_each = length(local.teammate_access_eks_principal_arn_map) > 0 && var.teammate_access_database_shell ? toset([
+    "dendenmushi-ssh",
+    "dendenmushi-webapp",
+  ]) : toset([])
 
   metadata {
     name      = "database-shell"
-    namespace = kubernetes_namespace.dendenmushi.metadata[0].name
+    namespace = kubernetes_namespace.dendenmushi[each.key].metadata[0].name
   }
 
   role_ref {
     api_group = "rbac.authorization.k8s.io"
     kind      = "Role"
-    name      = kubernetes_role.teammate_access_database_shell[0].metadata[0].name
+    name      = kubernetes_role.teammate_access_database_shell[each.key].metadata[0].name
   }
 
   subject {

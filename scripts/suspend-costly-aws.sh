@@ -14,7 +14,11 @@ ENVIRONMENT=${ENVIRONMENT:-dev}
 PROJECT_NAME=${PROJECT_NAME:-dendenmushi}
 CLUSTER_NAME=${CLUSTER_NAME:-"${PROJECT_NAME}-cluster-${ENVIRONMENT}"}
 NODE_GROUP_NAME=${NODE_GROUP_NAME:-}
-NAMESPACE=${NAMESPACE:-dendenmushi}
+SSH_NAMESPACE=${SSH_NAMESPACE:-dendenmushi-ssh}
+AGENTIC_NAMESPACE=${AGENTIC_NAMESPACE:-dendenmushi-agentic}
+WEBAPP_NAMESPACE=${WEBAPP_NAMESPACE:-dendenmushi-webapp}
+LEGACY_NAMESPACE=${LEGACY_NAMESPACE:-dendenmushi}
+APPLICATION_NAMESPACES=("${SSH_NAMESPACE}" "${AGENTIC_NAMESPACE}" "${WEBAPP_NAMESPACE}" "${LEGACY_NAMESPACE}")
 APPLICATION_LB_NAME=${APPLICATION_LB_NAME:-"${PROJECT_NAME}-${ENVIRONMENT}"}
 RDS_INSTANCE_ID=${RDS_INSTANCE_ID:-"${PROJECT_NAME}-postgres-${ENVIRONMENT}"}
 ROUTE53_APPLICATION_RECORD_TARGET=${ROUTE53_APPLICATION_RECORD_TARGET:-"aws_route53_record.application[0]"}
@@ -215,9 +219,11 @@ kubectl_cmd() {
 
 cleanup_temp_psql_pods() {
   if [[ -n "${KUBECONFIG_FILE:-}" && -f "${KUBECONFIG_FILE}" ]]; then
-    kubectl --kubeconfig "${KUBECONFIG_FILE}" \
-      delete pod -n "${NAMESPACE}" -l app=ddm-cost-suspend-psql \
-      --ignore-not-found --wait=false >/dev/null 2>&1 || true
+    for namespace in "${APPLICATION_NAMESPACES[@]}"; do
+      kubectl --kubeconfig "${KUBECONFIG_FILE}" \
+        delete pod -n "${namespace}" -l app=ddm-cost-suspend-psql \
+        --ignore-not-found --wait=false >/dev/null 2>&1 || true
+    done
   fi
 }
 trap cleanup_temp_psql_pods EXIT
@@ -291,7 +297,8 @@ capture_inventory() {
   "projectName": "${PROJECT_NAME}",
   "clusterName": "${CLUSTER_NAME}",
   "nodeGroupName": "${NODE_GROUP_NAME}",
-  "namespace": "${NAMESPACE}",
+  "namespaces": ["${SSH_NAMESPACE}", "${AGENTIC_NAMESPACE}", "${WEBAPP_NAMESPACE}"],
+  "legacyNamespace": "${LEGACY_NAMESPACE}",
   "applicationLoadBalancerName": "${APPLICATION_LB_NAME}",
   "rdsInstanceId": "${RDS_INSTANCE_ID}",
   "route53HostedZonesDeleted": false
@@ -360,9 +367,11 @@ EOF
     capture "${BACKUP_DIR}/k8s-services-wide.txt" kubectl_cmd get svc -A -o wide
     capture "${BACKUP_DIR}/k8s-pvc.txt" kubectl_cmd get pvc -A
     capture "${BACKUP_DIR}/k8s-applications.txt" kubectl_cmd get applications -A
-    capture "${BACKUP_DIR}/k8s-dendenmushi-configmaps.txt" kubectl_cmd get configmaps -n "${NAMESPACE}"
-    capture "${BACKUP_DIR}/k8s-dendenmushi-secrets-names.txt" kubectl_cmd get secrets -n "${NAMESPACE}"
-    capture "${BACKUP_DIR}/k8s-dendenmushi-workloads.yaml" kubectl_cmd get deploy,svc,ingress,configmap -n "${NAMESPACE}" -o yaml
+    for namespace in "${APPLICATION_NAMESPACES[@]}"; do
+      capture "${BACKUP_DIR}/k8s-${namespace}-configmaps.txt" kubectl_cmd get configmaps -n "${namespace}"
+      capture "${BACKUP_DIR}/k8s-${namespace}-secrets-names.txt" kubectl_cmd get secrets -n "${namespace}"
+      capture "${BACKUP_DIR}/k8s-${namespace}-workloads.yaml" kubectl_cmd get deploy,svc,ingress,configmap -n "${namespace}" -o yaml
+    done
   else
     log "EKS cluster is not reachable; skipping Kubernetes inventory."
   fi
@@ -378,13 +387,17 @@ psql_pod_manifest() {
     '{
       apiVersion: "v1",
       kind: "Pod",
-      metadata: {name: $pod, labels: {app: "ddm-cost-suspend-psql"}},
+      metadata: {name: $pod, labels: {app: "ddm-cost-suspend-psql", component: "database-maintenance"}},
       spec: {
         restartPolicy: "Never",
         containers: [{
           name: "postgres",
           image: $image,
           command: ["sleep", "7200"],
+          resources: {
+            requests: {cpu: "25m", memory: "64Mi"},
+            limits: {cpu: "250m", memory: "256Mi"}
+          },
           env: [{
             name: "DATABASE_URL",
             valueFrom: {secretKeyRef: {name: $secret, key: "database-url"}}
@@ -397,17 +410,19 @@ psql_pod_manifest() {
 start_psql_pod() {
   local label=$1
   local secret=$2
+  local namespace=$3
   local pod="ddm-${label}-pg-$(date -u '+%H%M%S')"
 
-  kubectl_cmd delete pod "${pod}" -n "${NAMESPACE}" --ignore-not-found --wait=true >/dev/null 2>&1 || true
-  psql_pod_manifest "${pod}" "${secret}" | kubectl_cmd apply -n "${NAMESPACE}" -f - >/dev/null
-  kubectl_cmd wait --for=condition=Ready "pod/${pod}" -n "${NAMESPACE}" --timeout=180s >/dev/null
+  kubectl_cmd delete pod "${pod}" -n "${namespace}" --ignore-not-found --wait=true >/dev/null 2>&1 || true
+  psql_pod_manifest "${pod}" "${secret}" | kubectl_cmd apply -n "${namespace}" -f - >/dev/null
+  kubectl_cmd wait --for=condition=Ready "pod/${pod}" -n "${namespace}" --timeout=180s >/dev/null
   printf '%s\n' "${pod}"
 }
 
 delete_psql_pod() {
   local pod=$1
-  kubectl_cmd delete pod "${pod}" -n "${NAMESPACE}" --ignore-not-found --wait=false >/dev/null 2>&1 || true
+  local namespace=$2
+  kubectl_cmd delete pod "${pod}" -n "${namespace}" --ignore-not-found --wait=false >/dev/null 2>&1 || true
 }
 
 table_count_query() {
@@ -427,32 +442,35 @@ SQL
 backup_database() {
   local label=$1
   local secret=$2
+  local namespace=$3
   local pod
   local query
   query=$(table_count_query)
 
   log "Backing up PostgreSQL database ${label}"
-  pod=$(start_psql_pod "${label}" "${secret}")
-  trap 'delete_psql_pod "${pod}"' RETURN
+  pod=$(start_psql_pod "${label}" "${secret}" "${namespace}")
+  trap 'delete_psql_pod "${pod}" "${namespace}"' RETURN
 
-  kubectl_cmd exec "${pod}" -n "${NAMESPACE}" -c postgres -- \
+  kubectl_cmd exec "${pod}" -n "${namespace}" -c postgres -- \
     sh -c 'DATABASE_URL=$(printf "%s" "$DATABASE_URL" | sed "s/sslmode=no-verify/sslmode=require/g"); export DATABASE_URL; pg_dump "$DATABASE_URL" --format=custom --no-owner --no-acl' \
     >"${BACKUP_DIR}/db-${label}.dump"
 
-  kubectl_cmd exec "${pod}" -n "${NAMESPACE}" -c postgres -- \
+  kubectl_cmd exec "${pod}" -n "${namespace}" -c postgres -- \
     env TABLE_COUNT_QUERY="${query}" \
     sh -c 'DATABASE_URL=$(printf "%s" "$DATABASE_URL" | sed "s/sslmode=no-verify/sslmode=require/g"); export DATABASE_URL; psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -At -F "	" -c "$TABLE_COUNT_QUERY" | psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -At -F "	"' \
     >"${BACKUP_DIR}/db-${label}-counts.tsv"
 
-  kubectl_cmd exec "${pod}" -n "${NAMESPACE}" -c postgres -- \
+  kubectl_cmd exec "${pod}" -n "${namespace}" -c postgres -- \
     sh -c 'DATABASE_URL=$(printf "%s" "$DATABASE_URL" | sed "s/sslmode=no-verify/sslmode=require/g"); export DATABASE_URL; psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -At -F "	" -c "select current_database(), current_user, inet_server_addr(), inet_server_port();"' \
     >"${BACKUP_DIR}/db-${label}-connection.tsv"
 
-  delete_psql_pod "${pod}"
+  delete_psql_pod "${pod}" "${namespace}"
   trap - RETURN
 }
 
 backup_databases() {
+  local webapp_namespace incident_namespace
+
   if [[ "${SKIP_DB_BACKUP}" == "true" ]]; then
     log "Skipping PostgreSQL backup because SKIP_DB_BACKUP=true."
     return
@@ -461,8 +479,27 @@ backup_databases() {
     echo "Cannot back up PostgreSQL because EKS is not reachable." >&2
     exit 1
   fi
-  backup_database "webapp" "dendenmushi-webapp-database"
-  backup_database "incident" "dendenmushi-database"
+  webapp_namespace=$(database_namespace_for_secret "dendenmushi-webapp-database" "${WEBAPP_NAMESPACE}")
+  incident_namespace=$(database_namespace_for_secret "dendenmushi-database" "${AGENTIC_NAMESPACE}")
+  backup_database "webapp" "dendenmushi-webapp-database" "${webapp_namespace}"
+  backup_database "incident" "dendenmushi-database" "${incident_namespace}"
+}
+
+database_namespace_for_secret() {
+  local secret=$1
+  local preferred_namespace=$2
+
+  if kubectl_cmd get secret "${secret}" -n "${preferred_namespace}" >/dev/null 2>&1; then
+    printf '%s\n' "${preferred_namespace}"
+    return
+  fi
+  if kubectl_cmd get secret "${secret}" -n "${LEGACY_NAMESPACE}" >/dev/null 2>&1; then
+    printf '%s\n' "${LEGACY_NAMESPACE}"
+    return
+  fi
+
+  echo "Secret ${secret} was not found in ${preferred_namespace} or ${LEGACY_NAMESPACE}." >&2
+  exit 1
 }
 
 backup_all() {
@@ -533,9 +570,13 @@ delete_kubernetes_ingresses_and_alb() {
     --ignore-not-found \
     --wait=false >/dev/null 2>&1 || true
 
-  log "Deleting Kubernetes ingresses in ${NAMESPACE} so the ALB controller removes the ALB."
-  kubectl_cmd get ingress -n "${NAMESPACE}" -o yaml >"${BACKUP_DIR}/k8s-ingresses-before-delete.yaml" 2>/dev/null || true
-  kubectl_cmd delete ingress --all -n "${NAMESPACE}" --ignore-not-found --wait=true
+  log "Deleting Kubernetes ingresses in all DenDenMushi namespaces so the ALB controller removes the ALB."
+  kubectl_cmd get ingress --all-namespaces -l app=dendenmushi -o yaml >"${BACKUP_DIR}/k8s-ingresses-before-delete.yaml" 2>/dev/null || true
+  for namespace in "${APPLICATION_NAMESPACES[@]}"; do
+    if kubectl_cmd get namespace "${namespace}" >/dev/null 2>&1; then
+      kubectl_cmd delete ingress --all -n "${namespace}" --ignore-not-found --wait=true
+    fi
+  done
   sleep "${POST_INGRESS_DELETE_SLEEP_SECONDS}"
 
   if wait_for_alb_deleted; then
@@ -683,6 +724,7 @@ down() {
 restore_database() {
   local label=$1
   local secret=$2
+  local namespace=$3
   local dump_file="${BACKUP_DIR}/db-${label}.dump"
   local pod query expected_sha actual_sha
 
@@ -693,29 +735,31 @@ restore_database() {
 
   log "Restoring PostgreSQL database ${label}"
   query=$(table_count_query)
-  pod=$(start_psql_pod "${label}-restore" "${secret}")
-  trap 'delete_psql_pod "${pod}"' RETURN
+  pod=$(start_psql_pod "${label}-restore" "${secret}" "${namespace}")
+  trap 'delete_psql_pod "${pod}" "${namespace}"' RETURN
 
   expected_sha=$(shasum -a 256 "${dump_file}" | awk '{print $1}')
-  kubectl_cmd cp "${dump_file}" "${NAMESPACE}/${pod}:/tmp/${label}.dump" -c postgres
-  actual_sha=$(kubectl_cmd exec "${pod}" -n "${NAMESPACE}" -c postgres -- \
+  kubectl_cmd cp "${dump_file}" "${namespace}/${pod}:/tmp/${label}.dump" -c postgres
+  actual_sha=$(kubectl_cmd exec "${pod}" -n "${namespace}" -c postgres -- \
     sh -c "sha256sum /tmp/${label}.dump | cut -d ' ' -f 1")
   if [[ "${actual_sha}" != "${expected_sha}" ]]; then
     echo "Transferred ${label} dump checksum does not match the backup." >&2
     exit 1
   fi
-  kubectl_cmd exec "${pod}" -n "${NAMESPACE}" -c postgres -- \
+  kubectl_cmd exec "${pod}" -n "${namespace}" -c postgres -- \
     sh -c "DATABASE_URL=\$(printf \"%s\" \"\$DATABASE_URL\" | sed \"s/sslmode=no-verify/sslmode=require/g\"); export DATABASE_URL; pg_restore --clean --if-exists --no-owner --no-acl --dbname \"\$DATABASE_URL\" /tmp/${label}.dump"
-  kubectl_cmd exec "${pod}" -n "${NAMESPACE}" -c postgres -- \
+  kubectl_cmd exec "${pod}" -n "${namespace}" -c postgres -- \
     env TABLE_COUNT_QUERY="${query}" \
     sh -c 'DATABASE_URL=$(printf "%s" "$DATABASE_URL" | sed "s/sslmode=no-verify/sslmode=require/g"); export DATABASE_URL; psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -At -F "	" -c "$TABLE_COUNT_QUERY" | psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -At -F "	"' \
     >"${BACKUP_DIR}/db-${label}-counts-after-restore.tsv"
 
-  delete_psql_pod "${pod}"
+  delete_psql_pod "${pod}" "${namespace}"
   trap - RETURN
 }
 
 restore_databases() {
+  local webapp_namespace incident_namespace
+
   require_common_commands
   backup_dir_for_read
   if ! configure_kubectl; then
@@ -723,12 +767,18 @@ restore_databases() {
     exit 1
   fi
 
-  restore_database "webapp" "dendenmushi-webapp-database"
-  restore_database "incident" "dendenmushi-database"
+  webapp_namespace=$(database_namespace_for_secret "dendenmushi-webapp-database" "${WEBAPP_NAMESPACE}")
+  incident_namespace=$(database_namespace_for_secret "dendenmushi-database" "${AGENTIC_NAMESPACE}")
+  restore_database "webapp" "dendenmushi-webapp-database" "${webapp_namespace}"
+  restore_database "incident" "dendenmushi-database" "${incident_namespace}"
 
-  for deployment in session-manager audit-service agent-controlplane incident-agent nest-backend; do
-    kubectl_cmd rollout restart "deployment/${deployment}" -n "${NAMESPACE}" >/dev/null 2>&1 || true
+  for deployment in session-manager audit-service; do
+    kubectl_cmd rollout restart "deployment/${deployment}" -n "${SSH_NAMESPACE}" >/dev/null 2>&1 || true
   done
+  for deployment in agent-controlplane incident-agent; do
+    kubectl_cmd rollout restart "deployment/${deployment}" -n "${AGENTIC_NAMESPACE}" >/dev/null 2>&1 || true
+  done
+  kubectl_cmd rollout restart deployment/nest-backend -n "${WEBAPP_NAMESPACE}" >/dev/null 2>&1 || true
 }
 
 verify_database_counts() {
@@ -839,7 +889,8 @@ wait_for_application_alb() {
 
   while (( SECONDS < deadline )); do
     hostname=$(kubectl_cmd get ingress \
-      -n "${NAMESPACE}" \
+      --all-namespaces \
+      -l app=dendenmushi \
       -o jsonpath='{range .items[*].status.loadBalancer.ingress[*]}{.hostname}{"\n"}{end}' \
       2>/dev/null | sed -n '1p' || true)
     if [[ -n "${hostname}" ]]; then

@@ -98,7 +98,7 @@ module "iam_assumable_role_sts" {
   role_name                     = "${var.name}-sts-${var.env}"
   provider_url                  = module.eks.oidc_provider
   role_policy_arns              = [aws_iam_policy.ddm_events_publish.arn]
-  oidc_fully_qualified_subjects = ["system:serviceaccount:dendenmushi:sts"]
+  oidc_fully_qualified_subjects = ["system:serviceaccount:dendenmushi-ssh:sts"]
 }
 
 module "iam_assumable_role_proxy_controlplane" {
@@ -109,7 +109,7 @@ module "iam_assumable_role_proxy_controlplane" {
   role_name                     = "${var.name}-proxy-controlplane-${var.env}"
   provider_url                  = module.eks.oidc_provider
   role_policy_arns              = [aws_iam_policy.ddm_events_publish.arn]
-  oidc_fully_qualified_subjects = ["system:serviceaccount:dendenmushi:proxy-controlplane"]
+  oidc_fully_qualified_subjects = ["system:serviceaccount:dendenmushi-ssh:proxy-controlplane"]
 }
 
 module "iam_assumable_role_session_manager" {
@@ -120,7 +120,7 @@ module "iam_assumable_role_session_manager" {
   role_name                     = "${var.name}-session-manager-${var.env}"
   provider_url                  = module.eks.oidc_provider
   role_policy_arns              = [aws_iam_policy.ddm_events_publish.arn]
-  oidc_fully_qualified_subjects = ["system:serviceaccount:dendenmushi:session-manager"]
+  oidc_fully_qualified_subjects = ["system:serviceaccount:dendenmushi-ssh:session-manager"]
 }
 
 module "iam_assumable_role_audit_service" {
@@ -131,7 +131,7 @@ module "iam_assumable_role_audit_service" {
   role_name                     = "${var.name}-audit-service-${var.env}"
   provider_url                  = module.eks.oidc_provider
   role_policy_arns              = [aws_iam_policy.audit_service_events.arn]
-  oidc_fully_qualified_subjects = ["system:serviceaccount:dendenmushi:audit-service"]
+  oidc_fully_qualified_subjects = ["system:serviceaccount:dendenmushi-ssh:audit-service"]
 }
 
 resource "aws_iam_role_policy_attachment" "agent_controlplane_events_publish" {
