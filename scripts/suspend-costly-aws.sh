@@ -107,7 +107,7 @@ require_command() {
 }
 
 require_common_commands() {
-  for command in aws terraform kubectl jq base64 date; do
+  for command in aws terraform kubectl jq date shasum; do
     require_command "${command}"
   done
 }
@@ -678,7 +678,7 @@ restore_database() {
   local label=$1
   local secret=$2
   local dump_file="${BACKUP_DIR}/db-${label}.dump"
-  local pod query
+  local pod query expected_sha actual_sha
 
   if [[ ! -f "${dump_file}" ]]; then
     log "No dump found for ${label}: ${dump_file}; skipping."
@@ -690,8 +690,14 @@ restore_database() {
   pod=$(start_psql_pod "${label}-restore" "${secret}")
   trap 'delete_psql_pod "${pod}"' RETURN
 
-  kubectl_cmd exec -i "${pod}" -n "${NAMESPACE}" -c postgres -- \
-    sh -c "cat > /tmp/${label}.dump" <"${dump_file}"
+  expected_sha=$(shasum -a 256 "${dump_file}" | awk '{print $1}')
+  kubectl_cmd cp "${dump_file}" "${NAMESPACE}/${pod}:/tmp/${label}.dump" -c postgres
+  actual_sha=$(kubectl_cmd exec "${pod}" -n "${NAMESPACE}" -c postgres -- \
+    sh -c "sha256sum /tmp/${label}.dump | cut -d ' ' -f 1")
+  if [[ "${actual_sha}" != "${expected_sha}" ]]; then
+    echo "Transferred ${label} dump checksum does not match the backup." >&2
+    exit 1
+  fi
   kubectl_cmd exec "${pod}" -n "${NAMESPACE}" -c postgres -- \
     sh -c "DATABASE_URL=\$(printf \"%s\" \"\$DATABASE_URL\" | sed \"s/sslmode=no-verify/sslmode=require/g\"); export DATABASE_URL; pg_restore --clean --if-exists --no-owner --no-acl --dbname \"\$DATABASE_URL\" /tmp/${label}.dump"
   kubectl_cmd exec "${pod}" -n "${NAMESPACE}" -c postgres -- \

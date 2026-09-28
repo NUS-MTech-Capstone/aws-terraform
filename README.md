@@ -319,9 +319,10 @@ PUBLISH_GITOPS=true \
 `EXPECTED_AWS_ACCOUNT_ID` and the account saved in the backup before changing
 anything. It reapplies the main Terraform stack with the stale ALB value
 cleared, recreates the target host, bootstraps Kubernetes secrets, and restores
-PostgreSQL before application workloads start. It then publishes regenerated
-GitOps inventory to the clean Kubernetes `main` branch, waits for Argo CD and
-the new ALB, applies only the application Route 53 alias, and runs
+PostgreSQL before application workloads start. Database dumps are copied into
+the restore pod and verified by SHA-256 before restore. It then publishes
+regenerated GitOps inventory to the clean Kubernetes `main` branch, waits for
+Argo CD and the new ALB, applies only the application Route 53 alias, and runs
 `kubernetes/scripts/verify-aws.sh`. The Route 53 hosted zone is never replaced
 or deleted. Set `RESTORE_DB=false` only when the database contents are
 intentionally disposable.
