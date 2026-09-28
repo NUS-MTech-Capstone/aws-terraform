@@ -308,14 +308,22 @@ To inspect without deleting anything:
 To restore later, keep the backup directory available and run:
 
 ```bash
+AWS_PROFILE=capstone \
 BACKUP_DIR=ignore/aws-cost-suspension/<timestamp> \
+EXPECTED_AWS_ACCOUNT_ID=<12-digit-account-id> \
+PUBLISH_GITOPS=true \
   ./scripts/suspend-costly-aws.sh up
 ```
 
-`up` reapplies the main Terraform stack, recreates the target host, runs the
-Kubernetes bootstrap, restores PostgreSQL from the saved dumps by default, runs
-`kubernetes/scripts/verify-aws.sh`, then applies the final Route 53 alias using
-the new ALB DNS name. Set `RESTORE_DB=false` only when the database contents are
+`up` verifies that the active AWS caller matches both
+`EXPECTED_AWS_ACCOUNT_ID` and the account saved in the backup before changing
+anything. It reapplies the main Terraform stack with the stale ALB value
+cleared, recreates the target host, bootstraps Kubernetes secrets, and restores
+PostgreSQL before application workloads start. It then publishes regenerated
+GitOps inventory to the clean Kubernetes `main` branch, waits for Argo CD and
+the new ALB, applies only the application Route 53 alias, and runs
+`kubernetes/scripts/verify-aws.sh`. The Route 53 hosted zone is never replaced
+or deleted. Set `RESTORE_DB=false` only when the database contents are
 intentionally disposable.
 
 ### GitHub OIDC And Promotion

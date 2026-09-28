@@ -33,6 +33,15 @@ ALB_DELETE_TIMEOUT_SECONDS=${ALB_DELETE_TIMEOUT_SECONDS:-900}
 ALB_POLL_SECONDS=${ALB_POLL_SECONDS:-30}
 POST_INGRESS_DELETE_SLEEP_SECONDS=${POST_INGRESS_DELETE_SLEEP_SECONDS:-60}
 POST_TERRAFORM_SLEEP_SECONDS=${POST_TERRAFORM_SLEEP_SECONDS:-30}
+EXPECTED_AWS_ACCOUNT_ID=${EXPECTED_AWS_ACCOUNT_ID:-}
+PUBLISH_GITOPS=${PUBLISH_GITOPS:-false}
+GITOPS_REMOTE=${GITOPS_REMOTE:-origin}
+GITOPS_BRANCH=${GITOPS_BRANCH:-main}
+APPLICATION_DOMAIN_NAME=${APPLICATION_DOMAIN_NAME:-api.ddm.keiyam.me}
+ALB_READY_TIMEOUT_SECONDS=${ALB_READY_TIMEOUT_SECONDS:-1800}
+ARGOCD_READY_TIMEOUT_SECONDS=${ARGOCD_READY_TIMEOUT_SECONDS:-1800}
+DNS_READY_TIMEOUT_SECONDS=${DNS_READY_TIMEOUT_SECONDS:-600}
+RESTORE_POLL_SECONDS=${RESTORE_POLL_SECONDS:-15}
 
 MAIN_TF_VAR_ARGS=()
 for tfvars in "${AWS_TERRAFORM_DIR}/secrets.tfvars" "${AWS_TERRAFORM_DIR}/teammate-access.local.tfvars"; do
@@ -48,7 +57,8 @@ Usage:
   $(basename "$0") backup
   CONFIRM_DESTROY=destroy-costly-aws $(basename "$0") down
   BACKUP_DIR=<backup-dir> $(basename "$0") restore-db
-  BACKUP_DIR=<backup-dir> $(basename "$0") up
+  BACKUP_DIR=<backup-dir> EXPECTED_AWS_ACCOUNT_ID=<account-id> \
+    PUBLISH_GITOPS=true $(basename "$0") up
   $(basename "$0") verify-down
 
 Actions:
@@ -74,6 +84,11 @@ Important env:
   CREATE_RDS_SNAPSHOT=false         Optional manual RDS snapshot before destroy;
                                     this has snapshot storage cost.
   RESTORE_DB=true                   Used by up.
+  EXPECTED_AWS_ACCOUNT_ID           Must match the backup and active AWS caller.
+  PUBLISH_GITOPS=false              Must be true for up; publishes generated
+                                    Kubernetes overlay values to GitHub.
+  GITOPS_REMOTE=origin              Kubernetes Git remote used by up.
+  GITOPS_BRANCH=main                Kubernetes branch used by Argo CD.
   DELETE_STUCK_ALB=true             Fallback to AWS ELBv2 delete if controller
                                     does not remove the ALB in time.
 EOF
@@ -93,6 +108,13 @@ require_command() {
 
 require_common_commands() {
   for command in aws terraform kubectl jq base64 date; do
+    require_command "${command}"
+  done
+}
+
+require_up_commands() {
+  require_common_commands
+  for command in curl diff dig git; do
     require_command "${command}"
   done
 }
@@ -139,6 +161,38 @@ backup_dir_for_read() {
     KUBECONFIG_FILE="${BACKUP_DIR}/kubeconfig"
   fi
   log "Using backup dir: ${BACKUP_DIR}"
+}
+
+assert_restore_account() {
+  local identity_file backup_account actual_account actual_arn expected_account
+
+  identity_file="${BACKUP_DIR}/aws-caller-identity.json"
+  if [[ ! -f "${identity_file}" ]]; then
+    echo "Backup AWS identity is missing: ${identity_file}" >&2
+    exit 1
+  fi
+
+  backup_account=$(jq -r '.Account // empty' "${identity_file}")
+  if [[ ! "${backup_account}" =~ ^[0-9]{12}$ ]]; then
+    echo "Backup AWS account is invalid in ${identity_file}" >&2
+    exit 1
+  fi
+
+  expected_account=${EXPECTED_AWS_ACCOUNT_ID:-${backup_account}}
+  if [[ "${expected_account}" != "${backup_account}" ]]; then
+    echo "EXPECTED_AWS_ACCOUNT_ID ${expected_account} does not match backup account ${backup_account}." >&2
+    exit 1
+  fi
+
+  actual_account=$(aws sts get-caller-identity --query Account --output text)
+  actual_arn=$(aws sts get-caller-identity --query Arn --output text)
+  if [[ "${actual_account}" != "${expected_account}" ]]; then
+    echo "Refusing restore: active AWS account ${actual_account} does not match expected account ${expected_account}." >&2
+    exit 1
+  fi
+
+  EXPECTED_AWS_ACCOUNT_ID=${expected_account}
+  log "Verified AWS account ${actual_account} (${actual_arn})."
 }
 
 aws_tf() {
@@ -665,41 +719,210 @@ restore_databases() {
   done
 }
 
+verify_database_counts() {
+  local label expected actual
+
+  for label in webapp incident; do
+    expected="${BACKUP_DIR}/db-${label}-counts.tsv"
+    actual="${BACKUP_DIR}/db-${label}-counts-after-restore.tsv"
+    if [[ ! -f "${expected}" || ! -f "${actual}" ]]; then
+      echo "Cannot verify restored ${label} counts; expected ${expected} and ${actual}." >&2
+      exit 1
+    fi
+    if ! diff -u "${expected}" "${actual}"; then
+      echo "Restored ${label} table counts do not match the backup." >&2
+      exit 1
+    fi
+  done
+
+  log "Restored PostgreSQL table counts match both backups."
+}
+
+gitops_git() {
+  git -C "${KUBERNETES_DIR}" "$@"
+}
+
+require_gitops_publish_ready() {
+  local branch local_head remote_head
+
+  if [[ "${PUBLISH_GITOPS}" != "true" ]]; then
+    echo "Restore requires PUBLISH_GITOPS=true so Argo CD receives regenerated AWS and target values." >&2
+    exit 1
+  fi
+
+  branch=$(gitops_git branch --show-current)
+  if [[ "${branch}" != "${GITOPS_BRANCH}" ]]; then
+    echo "Kubernetes repository is on ${branch}; expected ${GITOPS_BRANCH}." >&2
+    exit 1
+  fi
+  if [[ -n "$(gitops_git status --porcelain --untracked-files=all)" ]]; then
+    echo "Kubernetes repository must be clean before restore." >&2
+    gitops_git status --short >&2
+    exit 1
+  fi
+
+  gitops_git fetch "${GITOPS_REMOTE}" "${GITOPS_BRANCH}"
+  local_head=$(gitops_git rev-parse HEAD)
+  remote_head=$(gitops_git rev-parse "${GITOPS_REMOTE}/${GITOPS_BRANCH}")
+  if [[ "${local_head}" != "${remote_head}" ]]; then
+    echo "Kubernetes ${GITOPS_BRANCH} must match ${GITOPS_REMOTE}/${GITOPS_BRANCH} before restore." >&2
+    exit 1
+  fi
+}
+
+publish_gitops_generated() {
+  local phase=$1
+  local env_file="apps/dendenmushi/overlays/dev/env.properties"
+  local inventory_file="apps/dendenmushi/overlays/dev/server-inventory.static.json"
+  local changed_path unexpected=""
+
+  while IFS= read -r changed_path; do
+    changed_path=${changed_path:3}
+    case "${changed_path}" in
+      "${env_file}"|"${inventory_file}") ;;
+      "") ;;
+      *) unexpected+="${changed_path}"$'\n' ;;
+    esac
+  done < <(gitops_git status --porcelain --untracked-files=all)
+
+  if [[ -n "${unexpected}" ]]; then
+    echo "Unexpected Kubernetes changes after bootstrap:" >&2
+    printf '%s' "${unexpected}" >&2
+    exit 1
+  fi
+
+  kubectl kustomize "${KUBERNETES_DIR}/apps/dendenmushi/overlays/dev" >/dev/null
+  gitops_git add -- "${env_file}" "${inventory_file}"
+  if gitops_git diff --cached --quiet; then
+    log "GitOps ${phase} values are already published."
+    return
+  fi
+
+  gitops_git diff --cached --check
+  gitops_git commit -m "deploy: refresh restored AWS ${phase}"
+  gitops_git push "${GITOPS_REMOTE}" "HEAD:${GITOPS_BRANCH}"
+}
+
+wait_for_application_alb() {
+  local deadline hostname=""
+  deadline=$((SECONDS + ALB_READY_TIMEOUT_SECONDS))
+
+  while (( SECONDS < deadline )); do
+    hostname=$(kubectl_cmd get ingress proxy-controlplane \
+      -n "${NAMESPACE}" \
+      -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)
+    if [[ -n "${hostname}" ]]; then
+      printf '%s\n' "${hostname}"
+      return
+    fi
+    log "Waiting for the application ALB hostname."
+    sleep "${RESTORE_POLL_SECONDS}"
+  done
+
+  echo "Timed out waiting for the application ALB hostname." >&2
+  exit 1
+}
+
+wait_for_argocd_ready() {
+  local deadline sync_status="" health_status=""
+  deadline=$((SECONDS + ARGOCD_READY_TIMEOUT_SECONDS))
+
+  while (( SECONDS < deadline )); do
+    sync_status=$(kubectl_cmd get application dendenmushi-dev -n argocd \
+      -o jsonpath='{.status.sync.status}' 2>/dev/null || true)
+    health_status=$(kubectl_cmd get application dendenmushi-dev -n argocd \
+      -o jsonpath='{.status.health.status}' 2>/dev/null || true)
+    if [[ "${sync_status}" == "Synced" && "${health_status}" == "Healthy" ]]; then
+      log "Argo CD application is Synced and Healthy."
+      return
+    fi
+    log "Waiting for Argo CD (sync=${sync_status:-unknown}, health=${health_status:-unknown})."
+    sleep "${RESTORE_POLL_SECONDS}"
+  done
+
+  echo "Timed out waiting for Argo CD to become Synced and Healthy." >&2
+  kubectl_cmd get application dendenmushi-dev -n argocd -o yaml >&2 || true
+  exit 1
+}
+
+wait_for_application_dns() {
+  local deadline
+  deadline=$((SECONDS + DNS_READY_TIMEOUT_SECONDS))
+
+  while (( SECONDS < deadline )); do
+    if [[ -n "$(dig +short "${APPLICATION_DOMAIN_NAME}" 2>/dev/null)" ]]; then
+      log "DNS is resolving for ${APPLICATION_DOMAIN_NAME}."
+      return
+    fi
+    log "Waiting for DNS propagation for ${APPLICATION_DOMAIN_NAME}."
+    sleep "${RESTORE_POLL_SECONDS}"
+  done
+
+  echo "Timed out waiting for DNS propagation for ${APPLICATION_DOMAIN_NAME}." >&2
+  exit 1
+}
+
 up() {
-  require_common_commands
+  require_up_commands
   backup_dir_for_read
+  assert_restore_account
+  require_gitops_publish_ready
   init_terraform
 
   log "Recreating main AWS infrastructure without application ALB DNS first."
-  aws_tf apply -auto-approve "${MAIN_TF_VAR_ARGS[@]}"
+  aws_tf apply \
+    -auto-approve \
+    "${MAIN_TF_VAR_ARGS[@]}" \
+    -var="application_alb_dns_name="
   sleep "${POST_TERRAFORM_SLEEP_SECONDS}"
 
+  assert_restore_account
   log "Recreating target host."
   "${TARGET_TERRAFORM_DIR}/scripts/bootstrap.sh" -auto-approve
   sleep "${POST_TERRAFORM_SLEEP_SECONDS}"
 
-  log "Bootstrapping Kubernetes and GitOps environment."
-  "${KUBERNETES_DIR}/scripts/bootstrap-aws.sh"
-
-  if [[ "${RESTORE_DB}" == "true" ]]; then
-    restore_databases
-  fi
-
-  log "Running AWS deployment verification."
-  local verify_log alb_dns
-  verify_log="${BACKUP_DIR}/restore-verify-aws.log"
-  "${KUBERNETES_DIR}/scripts/verify-aws.sh" | tee "${verify_log}"
-  alb_dns=$(awk '/^ALB DNS name:/ {print $4}' "${verify_log}" | tail -n 1)
-  if [[ -z "${alb_dns}" ]]; then
-    echo "Could not parse ALB DNS name from ${verify_log}" >&2
+  if ! configure_kubectl; then
+    echo "Cannot configure kubectl for restored EKS cluster ${CLUSTER_NAME}." >&2
     exit 1
   fi
 
+  log "Bootstrapping Kubernetes secrets without starting application workloads."
+  KUBECONFIG="${KUBECONFIG_FILE}" APPLY_ARGOCD_APPLICATION=false \
+    "${KUBERNETES_DIR}/scripts/bootstrap-aws.sh"
+
+  if [[ "${RESTORE_DB}" == "true" ]]; then
+    restore_databases
+    verify_database_counts
+  fi
+
+  publish_gitops_generated "target inventory"
+
+  log "Starting Argo CD reconciliation."
+  kubectl_cmd apply -f "${KUBERNETES_DIR}/argocd/dendenmushi-dev-application.yaml"
+
+  local alb_dns verify_log
+  alb_dns=$(wait_for_application_alb)
+
+  log "Refreshing GitOps values with the restored ALB ARN."
+  KUBECONFIG="${KUBECONFIG_FILE}" APPLY_ARGOCD_APPLICATION=false \
+    "${KUBERNETES_DIR}/scripts/bootstrap-aws.sh"
+  publish_gitops_generated "ALB inventory"
+
+  assert_restore_account
   log "Applying final Route 53 alias record for ${alb_dns}; hosted zone is preserved."
   aws_tf apply \
     -auto-approve \
     "${MAIN_TF_VAR_ARGS[@]}" \
     -var="application_alb_dns_name=${alb_dns}"
+
+  wait_for_argocd_ready
+  wait_for_application_dns
+
+  log "Running AWS deployment verification."
+  verify_log="${BACKUP_DIR}/restore-verify-aws.log"
+  KUBECONFIG="${KUBECONFIG_FILE}" \
+    "${KUBERNETES_DIR}/scripts/verify-aws.sh" | tee "${verify_log}"
+  log "AWS restore completed successfully."
 }
 
 case "${ACTION}" in
