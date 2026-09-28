@@ -325,7 +325,9 @@ regenerated GitOps inventory to the clean Kubernetes `main` branch, waits for
 Argo CD and the new ALB, applies only the application Route 53 alias, and runs
 `kubernetes/scripts/verify-aws.sh`. The Route 53 hosted zone is never replaced
 or deleted. Set `RESTORE_DB=false` only when the database contents are
-intentionally disposable.
+intentionally disposable. Because the GitOps repository is private, `up` also
+registers it in Argo CD using the existing GitHub CLI keyring login; run
+`gh auth status --hostname github.com` before restoring.
 
 ### GitHub OIDC And Promotion
 

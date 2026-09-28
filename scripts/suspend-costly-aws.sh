@@ -37,6 +37,9 @@ EXPECTED_AWS_ACCOUNT_ID=${EXPECTED_AWS_ACCOUNT_ID:-}
 PUBLISH_GITOPS=${PUBLISH_GITOPS:-false}
 GITOPS_REMOTE=${GITOPS_REMOTE:-origin}
 GITOPS_BRANCH=${GITOPS_BRANCH:-main}
+GITOPS_REPO_URL=${GITOPS_REPO_URL:-https://github.com/NUS-MTech-Capstone/kubernetes.git}
+GITHUB_HOST=${GITHUB_HOST:-github.com}
+ARGOCD_REPOSITORY_SECRET_NAME=${ARGOCD_REPOSITORY_SECRET_NAME:-dendenmushi-gitops-repository}
 APPLICATION_DOMAIN_NAME=${APPLICATION_DOMAIN_NAME:-api.ddm.keiyam.me}
 ALB_READY_TIMEOUT_SECONDS=${ALB_READY_TIMEOUT_SECONDS:-1800}
 ARGOCD_READY_TIMEOUT_SECONDS=${ARGOCD_READY_TIMEOUT_SECONDS:-1800}
@@ -89,6 +92,9 @@ Important env:
                                     Kubernetes overlay values to GitHub.
   GITOPS_REMOTE=origin              Kubernetes Git remote used by up.
   GITOPS_BRANCH=main                Kubernetes branch used by Argo CD.
+  GITOPS_REPO_URL=${GITOPS_REPO_URL}
+                                    Private repository registered in Argo CD.
+                                    Uses the existing gh login for GITHUB_HOST.
   DELETE_STUCK_ALB=true             Fallback to AWS ELBv2 delete if controller
                                     does not remove the ALB in time.
 EOF
@@ -114,7 +120,7 @@ require_common_commands() {
 
 require_up_commands() {
   require_common_commands
-  for command in curl diff dig git; do
+  for command in curl diff dig gh git tr; do
     require_command "${command}"
   done
 }
@@ -809,14 +815,33 @@ publish_gitops_generated() {
   gitops_git push "${GITOPS_REMOTE}" "HEAD:${GITOPS_BRANCH}"
 }
 
+configure_argocd_repository() {
+  log "Registering the private GitOps repository with Argo CD."
+  gh auth status --hostname "${GITHUB_HOST}" >/dev/null
+  gh auth token --hostname "${GITHUB_HOST}" | tr -d '\r\n' | \
+    kubectl_cmd create secret generic "${ARGOCD_REPOSITORY_SECRET_NAME}" \
+      -n argocd \
+      --from-literal=type=git \
+      --from-literal="url=${GITOPS_REPO_URL}" \
+      --from-literal=username=x-access-token \
+      --from-file=password=/dev/stdin \
+      --dry-run=client \
+      -o yaml | \
+    kubectl_cmd label --local -f - \
+      argocd.argoproj.io/secret-type=repository \
+      -o yaml | \
+    kubectl_cmd apply -f - >/dev/null
+}
+
 wait_for_application_alb() {
   local deadline hostname=""
   deadline=$((SECONDS + ALB_READY_TIMEOUT_SECONDS))
 
   while (( SECONDS < deadline )); do
-    hostname=$(kubectl_cmd get ingress proxy-controlplane \
+    hostname=$(kubectl_cmd get ingress \
       -n "${NAMESPACE}" \
-      -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)
+      -o jsonpath='{range .items[*].status.loadBalancer.ingress[*]}{.hostname}{"\n"}{end}' \
+      2>/dev/null | sed -n '1p' || true)
     if [[ -n "${hostname}" ]]; then
       printf '%s\n' "${hostname}"
       return
@@ -903,6 +928,7 @@ up() {
 
   publish_gitops_generated "target inventory"
 
+  configure_argocd_repository
   log "Starting Argo CD reconciliation."
   kubectl_cmd apply -f "${KUBERNETES_DIR}/argocd/dendenmushi-dev-application.yaml"
 
