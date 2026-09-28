@@ -390,10 +390,18 @@ psql_pod_manifest() {
       metadata: {name: $pod, labels: {app: "ddm-cost-suspend-psql", component: "database-maintenance"}},
       spec: {
         restartPolicy: "Never",
+        securityContext: {seccompProfile: {type: "RuntimeDefault"}},
         containers: [{
           name: "postgres",
           image: $image,
           command: ["sleep", "7200"],
+          securityContext: {
+            allowPrivilegeEscalation: false,
+            capabilities: {drop: ["ALL"]},
+            runAsGroup: 70,
+            runAsNonRoot: true,
+            runAsUser: 70
+          },
           resources: {
             requests: {cpu: "25m", memory: "64Mi"},
             limits: {cpu: "250m", memory: "256Mi"}
