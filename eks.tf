@@ -202,6 +202,20 @@ resource "aws_eks_addon" "cloudwatch_observability" {
   addon_name                  = "amazon-cloudwatch-observability"
   resolve_conflicts_on_create = "OVERWRITE"
   resolve_conflicts_on_update = "OVERWRITE"
+  configuration_values = jsonencode({
+    manager = {
+      applicationSignals = {
+        autoMonitor = {
+          exclude = {
+            dotnet = { deployments = ["dendenmushi-agentic/agent-tool-gateway"] }
+            java   = { deployments = ["dendenmushi-agentic/agent-tool-gateway"] }
+            nodejs = { deployments = ["dendenmushi-agentic/agent-tool-gateway"] }
+            python = { deployments = ["dendenmushi-agentic/agent-tool-gateway"] }
+          }
+        }
+      }
+    }
+  })
 
   depends_on = [
     aws_cloudwatch_log_group.container_insights,

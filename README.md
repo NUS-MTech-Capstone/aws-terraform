@@ -43,6 +43,9 @@ to reduce cost and sensitive operational metadata exposure:
   and Prometheus data are pre-created with one-day retention.
 - The Amazon CloudWatch Observability EKS add-on is installed through EKS Pod
   Identity with `CloudWatchAgentServerPolicy`.
+- Application Signals auto-instrumentation excludes the metadata-only Agent
+  Tool Gateway. Four injected language runtimes exceeded that service's bounded
+  `128Mi` limit; Container Insights and JSON application logs still cover it.
 - Application traces are disabled by default in Kubernetes manifests. X-Ray or
   OTLP trace export should only be enabled temporarily for a demo/debug session.
 - Incident Reasoning Agent LangSmith tracing is dev/debug observability only. Terraform
