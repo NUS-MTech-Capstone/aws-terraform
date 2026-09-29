@@ -45,9 +45,10 @@ to reduce cost and sensitive operational metadata exposure:
   Identity with `CloudWatchAgentServerPolicy`.
 - Application traces are disabled by default in Kubernetes manifests. X-Ray or
   OTLP trace export should only be enabled temporarily for a demo/debug session.
-- Incident Agent LangSmith tracing is dev/debug observability only. Terraform
+- Incident Reasoning Agent LangSmith tracing is dev/debug observability only. Terraform
   creates `dendenmushi/incident-agent/langsmith-api-key-dev` in Secrets
-  Manager and the Incident Agent role can read only that LangSmith key plus its
+  Manager. The Reasoning Agent role can invoke Bedrock and read only that
+  optional tracing secret; the coordinator role is limited to SQS and its
   database URL. LangSmith may retain prompt and evidence metadata, so keep
   tracing to explicit debug windows.
 - Application services emit CloudWatch Embedded Metric Format (EMF) JSON to
@@ -526,6 +527,7 @@ terraform validate
 terraform output ecr_repository_urls
 terraform output proxy_dataplane_role_arn
 terraform output nest_backend_role_arn
+terraform output incident_reasoning_agent_role_arn
 terraform output webapp_database_secret_id
 terraform output application_certificate_arn
 terraform output cognito_user_pool_arn

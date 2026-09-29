@@ -202,14 +202,6 @@ resource "aws_iam_policy" "incident_agent" {
       {
         Effect = "Allow"
         Action = [
-          "bedrock:InvokeModel",
-          "bedrock:InvokeModelWithResponseStream",
-        ]
-        Resource = "*"
-      },
-      {
-        Effect = "Allow"
-        Action = [
           "sqs:ReceiveMessage",
           "sqs:DeleteMessage",
           "sqs:ChangeMessageVisibility",
@@ -218,12 +210,9 @@ resource "aws_iam_policy" "incident_agent" {
         Resource = aws_sqs_queue.incident_alerts.arn
       },
       {
-        Effect = "Allow"
-        Action = ["secretsmanager:GetSecretValue"]
-        Resource = [
-          aws_secretsmanager_secret.incident_database_url.arn,
-          aws_secretsmanager_secret.incident_agent_langsmith_api_key.arn,
-        ]
+        Effect   = "Allow"
+        Action   = ["secretsmanager:GetSecretValue"]
+        Resource = aws_secretsmanager_secret.incident_database_url.arn
       },
     ]
   })
@@ -242,6 +231,43 @@ module "iam_assumable_role_incident_agent" {
 
 output "incident_agent_role_arn" {
   value = module.iam_assumable_role_incident_agent.iam_role_arn
+}
+
+resource "aws_iam_policy" "incident_reasoning_agent" {
+  name = "${var.name}-incident-reasoning-agent-${var.env}"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "bedrock:InvokeModel",
+          "bedrock:InvokeModelWithResponseStream",
+        ]
+        Resource = "*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["secretsmanager:GetSecretValue"]
+        Resource = aws_secretsmanager_secret.incident_agent_langsmith_api_key.arn
+      },
+    ]
+  })
+}
+
+module "iam_assumable_role_incident_reasoning_agent" {
+  source  = "terraform-aws-modules/iam/aws//modules/iam-assumable-role-with-oidc"
+  version = "~> 5.0"
+
+  create_role                   = true
+  role_name                     = "${var.name}-incident-reasoning-agent-${var.env}"
+  provider_url                  = module.eks.oidc_provider
+  role_policy_arns              = [aws_iam_policy.incident_reasoning_agent.arn]
+  oidc_fully_qualified_subjects = ["system:serviceaccount:dendenmushi-agentic:incident-reasoning-agent"]
+}
+
+output "incident_reasoning_agent_role_arn" {
+  value = module.iam_assumable_role_incident_reasoning_agent.iam_role_arn
 }
 
 resource "aws_iam_policy" "agent_controlplane" {

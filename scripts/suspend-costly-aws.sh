@@ -783,7 +783,7 @@ restore_databases() {
   for deployment in session-manager audit-service; do
     kubectl_cmd rollout restart "deployment/${deployment}" -n "${SSH_NAMESPACE}" >/dev/null 2>&1 || true
   done
-  for deployment in agent-controlplane incident-agent; do
+  for deployment in agent-controlplane incident-agent incident-reasoning-agent agent-tool-gateway; do
     kubectl_cmd rollout restart "deployment/${deployment}" -n "${AGENTIC_NAMESPACE}" >/dev/null 2>&1 || true
   done
   kubectl_cmd rollout restart deployment/nest-backend -n "${WEBAPP_NAMESPACE}" >/dev/null 2>&1 || true

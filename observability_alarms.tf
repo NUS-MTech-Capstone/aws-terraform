@@ -462,18 +462,18 @@ resource "aws_cloudwatch_dashboard" "application_observability" {
         width  = 24
         height = 6
         properties = {
-          title   = "Incident Agent"
+          title   = "Incident Workflow"
           region  = var.aws_region
           view    = "timeSeries"
           stacked = false
           period  = 300
           metrics = [
             [local.observability_namespace, "IncidentReceived", "Service", "incident-agent", "Environment", var.env, { stat = "Sum", label = "Incidents received" }],
-            [".", "PlanApproved", ".", ".", ".", ".", { stat = "Sum", label = "Plans approved" }],
+            [local.observability_namespace, "PlanApproved", "Service", "agent-controlplane", "Environment", var.env, { stat = "Sum", label = "Plans approved" }],
             [".", "RemediationExecuted", ".", ".", ".", ".", { stat = "Sum", label = "Remediations executed" }],
             [".", "RemediationFailed", ".", ".", ".", ".", { stat = "Sum", yAxis = "right", label = "Remediation failures" }],
             [".", "SQSMessageFailures", ".", ".", ".", ".", { stat = "Sum", yAxis = "right", label = "SQS failures" }],
-            [".", "BedrockErrors", ".", ".", ".", ".", { stat = "Sum", yAxis = "right", label = "Bedrock errors" }],
+            [local.observability_namespace, "BedrockErrors", "Service", "incident-reasoning-agent", "Environment", var.env, { stat = "Sum", yAxis = "right", label = "Bedrock errors" }],
             [".", "BedrockRequestLatencyMs", ".", ".", ".", ".", { stat = "p95", label = "Bedrock p95 latency" }],
           ]
         }
@@ -742,7 +742,7 @@ resource "aws_cloudwatch_metric_alarm" "incident_agent_remediation_failures" {
   ok_actions          = local.observability_alarm_actions
 
   dimensions = {
-    Service     = "incident-agent"
+    Service     = "agent-controlplane"
     Environment = var.env
   }
 
@@ -786,7 +786,7 @@ resource "aws_cloudwatch_metric_alarm" "incident_agent_bedrock_errors" {
   ok_actions          = local.observability_alarm_actions
 
   dimensions = {
-    Service     = "incident-agent"
+    Service     = "incident-reasoning-agent"
     Environment = var.env
   }
 
