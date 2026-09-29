@@ -54,13 +54,28 @@ to reduce cost and sensitive operational metadata exposure:
   optional tracing secret; the coordinator role is limited to SQS and its
   database URL. LangSmith may retain prompt and evidence metadata, so keep
   tracing to explicit debug windows.
+- Terraform creates the
+  `dendenmushi/incident-agent/openai-api-key-dev` Secrets Manager container for
+  an AgentCore inference-gateway credential. Populate it with a JSON `api_key`
+  field through Secrets Manager only. A small CloudFormation credential stack
+  references that external JSON field without importing it into Terraform
+  state, while a second stack creates the IAM-authenticated gateway, built-in
+  `openai` inference target, and fail-open 10 requests/minute plus 100,000
+  tokens/minute target limit. The Reasoning Agent can invoke only that gateway
+  and cannot read this secret; the gateway execution role can read only the
+  exact credential provider and secret.
+  AgentCore also evaluates credential retrieval against the service-owned
+  `default` token vault, its generated workload identity, and the `default`
+  workload-identity directory. The execution policy therefore lists those
+  exact required parents and denies every resource outside the OpenAI
+  credential/gateway set.
 - Application services emit CloudWatch Embedded Metric Format (EMF) JSON to
   stdout in the `DenDenMushi` namespace. The alarm set in
   `observability_alarms.tf` watches the hardening symptoms: authentication
   failures, STS errors/latency, session start and assignment failures, stale
   proxy pods, heartbeat misses, WebSocket disconnect errors, SSH failures, low
   proxy pod capacity, and agent-controlplane remediation plus incident-agent
-  SQS/Bedrock failures.
+  SQS/Bedrock/OpenAI failures and AgentCore gateway throttling.
 - `observability_alarms.tf` also creates the
   `${name}-${env}-application-observability` CloudWatch dashboard. The dashboard
   includes live EKS Container Insights panels, AWS dependency panels for the
@@ -531,6 +546,8 @@ terraform output ecr_repository_urls
 terraform output proxy_dataplane_role_arn
 terraform output nest_backend_role_arn
 terraform output incident_reasoning_agent_role_arn
+terraform output agentcore_openai_gateway_arn
+terraform output agentcore_openai_gateway_url
 terraform output webapp_database_secret_id
 terraform output application_certificate_arn
 terraform output cognito_user_pool_arn

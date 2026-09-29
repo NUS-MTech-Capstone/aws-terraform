@@ -194,6 +194,21 @@ resource "aws_secretsmanager_secret_version" "incident_agent_langsmith_api_key" 
   secret_string = trimspace(var.langsmith_api_key)
 }
 
+# This secret intentionally has no Terraform-managed value. Populate it through
+# Secrets Manager after creating a project-scoped OpenAI key, then let AgentCore
+# Identity reference the secret so the EKS workload never receives the key.
+resource "aws_secretsmanager_secret" "incident_agent_openai_api_key" {
+  name                    = "${var.name}/incident-agent/openai-api-key-${var.env}"
+  description             = "OpenAI API key reserved for the AgentCore inference gateway."
+  recovery_window_in_days = 7
+
+  tags = {
+    Environment = var.env
+    Project     = var.name
+    Purpose     = "agentcore-openai-inference"
+  }
+}
+
 resource "aws_iam_policy" "incident_agent" {
   name = "${var.name}-incident-agent-${var.env}"
   policy = jsonencode({
@@ -239,17 +254,14 @@ resource "aws_iam_policy" "incident_reasoning_agent" {
     Version = "2012-10-17"
     Statement = [
       {
-        Effect = "Allow"
-        Action = [
-          "bedrock:InvokeModel",
-          "bedrock:InvokeModelWithResponseStream",
-        ]
-        Resource = "*"
-      },
-      {
         Effect   = "Allow"
         Action   = ["secretsmanager:GetSecretValue"]
         Resource = aws_secretsmanager_secret.incident_agent_langsmith_api_key.arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["bedrock-agentcore:InvokeGateway"]
+        Resource = aws_cloudformation_stack.agentcore_openai_gateway.outputs["GatewayArn"]
       },
     ]
   })
@@ -313,6 +325,11 @@ output "incident_database_secret_id" {
 
 output "incident_agent_langsmith_api_key_secret_id" {
   value = aws_secretsmanager_secret.incident_agent_langsmith_api_key.id
+}
+
+output "incident_agent_openai_api_key_secret_id" {
+  description = "Secrets Manager secret to populate with a JSON api_key field before enabling the AgentCore OpenAI target."
+  value       = aws_secretsmanager_secret.incident_agent_openai_api_key.id
 }
 
 output "incident_agent_langsmith_project" {

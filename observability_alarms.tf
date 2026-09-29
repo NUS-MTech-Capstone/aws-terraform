@@ -475,6 +475,11 @@ resource "aws_cloudwatch_dashboard" "application_observability" {
             [".", "SQSMessageFailures", ".", ".", ".", ".", { stat = "Sum", yAxis = "right", label = "SQS failures" }],
             [local.observability_namespace, "BedrockErrors", "Service", "incident-reasoning-agent", "Environment", var.env, { stat = "Sum", yAxis = "right", label = "Bedrock errors" }],
             [".", "BedrockRequestLatencyMs", ".", ".", ".", ".", { stat = "p95", label = "Bedrock p95 latency" }],
+            [local.observability_namespace, "OpenAIErrors", "Service", "incident-reasoning-agent", "Environment", var.env, { stat = "Sum", yAxis = "right", label = "OpenAI errors" }],
+            [".", "OpenAIRequestLatencyMs", ".", ".", ".", ".", { stat = "p95", label = "OpenAI p95 latency" }],
+            [".", "OpenAITokens", ".", ".", ".", ".", { stat = "Sum", label = "OpenAI tokens" }],
+            [".", "AgentCoreGatewayThrottles", ".", ".", ".", ".", { stat = "Sum", yAxis = "right", label = "Gateway throttles" }],
+            [".", "ProviderFallbacks", ".", ".", ".", ".", { stat = "Sum", yAxis = "right", label = "Deterministic fallbacks" }],
           ]
         }
       },
@@ -500,6 +505,8 @@ resource "aws_cloudwatch_dashboard" "application_observability" {
             aws_cloudwatch_metric_alarm.incident_agent_remediation_failures.arn,
             aws_cloudwatch_metric_alarm.incident_agent_sqs_failures.arn,
             aws_cloudwatch_metric_alarm.incident_agent_bedrock_errors.arn,
+            aws_cloudwatch_metric_alarm.incident_agent_openai_errors.arn,
+            aws_cloudwatch_metric_alarm.incident_agent_gateway_throttles.arn,
           ]
         }
       },
@@ -780,6 +787,50 @@ resource "aws_cloudwatch_metric_alarm" "incident_agent_bedrock_errors" {
   period              = 300
   evaluation_periods  = 1
   threshold           = 3
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = local.observability_alarm_actions
+  ok_actions          = local.observability_alarm_actions
+
+  dimensions = {
+    Service     = "incident-reasoning-agent"
+    Environment = var.env
+  }
+
+  tags = local.observability_common_alarm_tags
+}
+
+resource "aws_cloudwatch_metric_alarm" "incident_agent_openai_errors" {
+  alarm_name          = "${var.name}-${var.env}-incident-agent-openai-errors"
+  alarm_description   = jsonencode({ event = "OpenAIErrors", windowSeconds = 300 })
+  namespace           = local.observability_namespace
+  metric_name         = "OpenAIErrors"
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 3
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = local.observability_alarm_actions
+  ok_actions          = local.observability_alarm_actions
+
+  dimensions = {
+    Service     = "incident-reasoning-agent"
+    Environment = var.env
+  }
+
+  tags = local.observability_common_alarm_tags
+}
+
+resource "aws_cloudwatch_metric_alarm" "incident_agent_gateway_throttles" {
+  alarm_name          = "${var.name}-${var.env}-incident-agent-gateway-throttles"
+  alarm_description   = jsonencode({ event = "AgentCoreGatewayThrottles", windowSeconds = 300 })
+  namespace           = local.observability_namespace
+  metric_name         = "AgentCoreGatewayThrottles"
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 1
   comparison_operator = "GreaterThanOrEqualToThreshold"
   treat_missing_data  = "notBreaching"
   alarm_actions       = local.observability_alarm_actions
