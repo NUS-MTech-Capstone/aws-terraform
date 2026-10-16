@@ -107,7 +107,13 @@ resource "aws_iam_role" "github_terraform_plan" {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
         }
         StringLike = {
-          "token.actions.githubusercontent.com:sub" = "repo:NUS-MTech-Capstone/aws:*"
+          "token.actions.githubusercontent.com:sub" = [
+            "repo:NUS-MTech-Capstone/aws-terraform:pull_request",
+            "repo:NUS-MTech-Capstone/aws-terraform:ref:refs/heads/main",
+            "repo:NUS-MTech-Capstone/aws-terraform:ref:refs/heads/dev",
+            "repo:NUS-MTech-Capstone/target-hosts-setup:pull_request",
+            "repo:NUS-MTech-Capstone/target-hosts-setup:ref:refs/heads/main",
+          ]
         }
       }
     }]
@@ -131,9 +137,12 @@ resource "aws_iam_role_policy" "github_terraform_plan_state" {
         Resource = "arn:aws:s3:::ddm-capstone-tfstate"
       },
       {
-        Effect   = "Allow"
-        Action   = ["s3:GetObject"]
-        Resource = "arn:aws:s3:::ddm-capstone-tfstate/ddm/terraform.tfstate"
+        Effect = "Allow"
+        Action = ["s3:GetObject"]
+        Resource = [
+          "arn:aws:s3:::ddm-capstone-tfstate/ddm/terraform.tfstate",
+          "arn:aws:s3:::ddm-capstone-tfstate/ddm/target-hosts/terraform.tfstate",
+        ]
       },
     ]
   })

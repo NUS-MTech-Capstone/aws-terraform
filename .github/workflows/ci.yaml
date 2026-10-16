@@ -1,11 +1,10 @@
 name: Terraform CI
 
 on:
+  workflow_dispatch:
   pull_request:
   push:
-    branches:
-      - main
-      - dev
+    branches: [main, dev]
 
 permissions:
   contents: read
@@ -13,12 +12,12 @@ permissions:
 
 jobs:
   terraform:
-    uses: NUS-MTech-Capstone/github-actions-shared/.github/workflows/terraform-ci.yaml@main
+    uses: NUS-MTech-Capstone/github-actions-shared/.github/workflows/terraform-ci.yaml@5e89b72aaec29b5c1b350282d95d9ea26ce6129b
     with:
       terraform-version: "1.14.5"
-      tfvars-json: |
-        {
-          "postgres_db_password": "ci-placeholder-password"
-        }
+      run-plan: ${{ vars.TERRAFORM_LIVE_PLAN_ENABLED != 'false' && (github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev') }}
+      required-variable-files: secrets.tfvars teammate-access.local.tfvars
     secrets:
       AWS_ROLE_ARN: ${{ secrets.AWS_TERRAFORM_PLAN_ROLE_ARN }}
+      TFVARS_HCL: ${{ secrets.TERRAFORM_TFVARS_HCL }}
+      TEAMMATE_TFVARS_HCL: ${{ secrets.TERRAFORM_TEAMMATE_TFVARS_HCL }}

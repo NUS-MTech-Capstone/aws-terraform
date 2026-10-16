@@ -38,3 +38,7 @@ terraform.rc
 
 **/ignore/**
 kubeconfig*
+
+# Sanitized CI summaries and sensitive local saved plans
+.terraform-ci/
+*.tfplan
