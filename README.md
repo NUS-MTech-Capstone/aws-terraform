@@ -369,10 +369,14 @@ branches. The shared workflow is pinned to a reviewed source commit.
 Configure these GitHub Actions secrets without printing their values:
 
 - `AWS_TERRAFORM_PLAN_ROLE_ARN`: the existing Terraform planning role output.
-- `TERRAFORM_TFVARS_HCL`: the exact local `secrets.tfvars` contents.
+- `TERRAFORM_TFVARS_HCL`: the local `secrets.tfvars` contents, with the ALB DNS
+  value checked against the currently deployed named ALB before publishing.
 - `TERRAFORM_TEAMMATE_TFVARS_HCL`: the exact local `teammate-access.local.tfvars` contents.
 
-Both variable files are mandatory for CI, matching local planning:
+Both variable files are mandatory for CI. Do not copy a stale ALB DNS override
+into CI: the existing Route 53 precondition deliberately rejects it. Correct the
+protected CI copy after checking the named ALB; preserve user-owned local secret
+files unless explicitly authorized to edit them. Local planning includes both files:
 
 ```bash
 AWS_PROFILE=capstone terraform plan \
