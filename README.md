@@ -634,3 +634,12 @@ Expected result:
 - Destroying the stack should be planned carefully because EKS load balancers,
   Route 53 aliases, secrets, and target-host dependencies may have cross-repo
   ownership.
+
+Provider versions are unchanged by platform checksum maintenance. When refreshing
+checksums for the supported macOS development and Linux CI platforms, run:
+
+```bash
+terraform providers lock -platform=linux_amd64 -platform=darwin_arm64
+```
+
+Commit the reviewed lockfile; CI continues to enforce `-lockfile=readonly`.
