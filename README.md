@@ -357,18 +357,54 @@ The ECR push role is restricted to the service repositories declared in
 terraform output -raw github_ecr_push_role_arn
 ```
 
-Terraform CI and apply use separate GitHub OIDC roles:
+### Terraform CI and read-only AWS plans
+
+CI always runs formatting checks, locked provider initialization with the backend
+disabled, and configuration validation. A dependent job then runs a real refreshed
+AWS plan through the dedicated `github_terraform_plan_role_arn` OIDC role.
+Only same-repository PRs and the configured `main`/`dev` branches may plan. Fork
+PRs receive credential-free validation. Manual dispatch is restricted to those
+branches. The shared workflow is pinned to a reviewed source commit.
+
+Configure these GitHub Actions secrets without printing their values:
+
+- `AWS_TERRAFORM_PLAN_ROLE_ARN`: the existing Terraform planning role output.
+- `TERRAFORM_TFVARS_HCL`: the local `secrets.tfvars` contents, with the ALB DNS
+  value checked against the currently deployed named ALB before publishing.
+- `TERRAFORM_TEAMMATE_TFVARS_HCL`: the exact local `teammate-access.local.tfvars` contents.
+
+Both variable files are mandatory for CI. Do not copy a stale ALB DNS override
+into CI: the existing Route 53 precondition deliberately rejects it. Correct the
+protected CI copy after checking the named ALB; preserve user-owned local secret
+files unless explicitly authorized to edit them. Local planning includes both files:
 
 ```bash
-terraform output -raw github_terraform_plan_role_arn
-terraform output -raw github_terraform_apply_role_arn
+AWS_PROFILE=capstone terraform plan \
+  -var-file=secrets.tfvars \
+  -var-file=teammate-access.local.tfvars
 ```
 
-Store these as `AWS_TERRAFORM_PLAN_ROLE_ARN` and
-`AWS_TERRAFORM_APPLY_ROLE_ARN`. Configure required reviewers on the repository's
-`dev` GitHub environment before enabling apply. The roles must first be
-bootstrapped with one authenticated local Terraform apply before the OIDC
-workflows can assume them.
+The role retains AWS read-only permissions, state reads for both project stacks,
+reads of the four Terraform-managed secret versions, and narrowly scoped EKS
+read access for managed resources and Helm release storage. It cannot mutate
+state or workloads, execute commands, or apply a Terraform plan. Bootstrap only
+the planning-role IAM policies, EKS access entry and associated read-only RBAC
+from a reviewed saved plan using an authenticated local operator. Reject any
+unrelated resource changes in that bootstrap plan.
+
+CI uses `-lock=false` with its read-only state role; do not run infrastructure
+applies concurrently. Exit codes 0 and 2 mean planning completed successfully;
+proposed changes are reported, never applied. Sanitized plan summaries and
+validation results are retained for 14 days, including failures. Raw plans,
+state and variable files must not be committed or uploaded.
+
+After retiring AWS, explicitly set repository variable
+`TERRAFORM_LIVE_PLAN_ENABLED=false` to retain configuration validation only.
+The job summary then states that no live AWS plan was performed. While AWS is
+active, leave the variable unset or `true`; missing credentials or backend access
+must fail CI. The legacy `workflows/cd.yaml` is outside `.github/workflows` and
+is not an enabled apply pipeline. This closeout does not enable it or grant the
+CI planning role apply authority.
 
 ### Argo CD Access
 
@@ -602,3 +638,12 @@ Expected result:
 - Destroying the stack should be planned carefully because EKS load balancers,
   Route 53 aliases, secrets, and target-host dependencies may have cross-repo
   ownership.
+
+Provider versions are unchanged by platform checksum maintenance. When refreshing
+checksums for the supported macOS development and Linux CI platforms, run:
+
+```bash
+terraform providers lock -platform=linux_amd64 -platform=darwin_arm64
+```
+
+Commit the reviewed lockfile; CI continues to enforce `-lockfile=readonly`.
