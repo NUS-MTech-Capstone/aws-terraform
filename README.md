@@ -8,8 +8,8 @@ Argo CD bootstrap.
 
 This repository creates the cloud infrastructure used by the DenDenMushi SSH
 access platform. It does not deploy application containers directly. Workloads
-are promoted through image tags and reconciled to EKS by the Kubernetes GitOps
-repository.
+are promoted through immutable image digests and reconciled to EKS by the
+Kubernetes GitOps repository.
 
 The infrastructure supports:
 
@@ -27,10 +27,8 @@ The infrastructure supports:
 - Route 53 and ACM resources for `api.ddm.keiyam.me`
 - Argo CD installed privately in the cluster for workload reconciliation
 
-The default EKS managed node group desires two `t3.medium` nodes and permits a
-minimum of one. A single `t3.medium` only exposes 17 pod slots, which is not
-enough for Kubernetes system add-ons, DenDenMushi workloads, and Argo CD
-together.
+The default EKS managed node group uses two `t3.medium` nodes to provide pod
+capacity for system add-ons, application workloads and Argo CD.
 
 ## Low-Retention Observability
 
@@ -44,16 +42,15 @@ to reduce cost and sensitive operational metadata exposure:
 - The Amazon CloudWatch Observability EKS add-on is installed through EKS Pod
   Identity with `CloudWatchAgentServerPolicy`.
 - Application Signals auto-instrumentation excludes the metadata-only Agent
-  Tool Gateway. Four injected language runtimes exceeded that service's bounded
-  `128Mi` limit; Container Insights and JSON application logs still cover it.
+  Tool Gateway, which is covered by Container Insights and JSON application logs.
 - Application traces are disabled by default in Kubernetes manifests. X-Ray or
   OTLP trace export should only be enabled temporarily for a demo/debug session.
 - Incident Reasoning Agent LangSmith tracing is dev/debug observability only. Terraform
   creates `dendenmushi/incident-agent/langsmith-api-key-dev` in Secrets
   Manager. The Reasoning Agent role can invoke Bedrock and read only that
   optional tracing secret; the coordinator role is limited to SQS and its
-  database URL. LangSmith may retain prompt and evidence metadata, so keep
-  tracing to explicit debug windows.
+  database URL. The application exporter sends allowlisted trace metadata with
+  empty inputs and outputs.
 - Terraform creates the
   `dendenmushi/incident-agent/openai-api-key-dev` Secrets Manager container for
   an AgentCore inference-gateway credential. Populate it with a JSON `api_key`
@@ -112,6 +109,8 @@ Route 53 + ACM
      - Proxy Dataplane
      - Agent Control Plane
      - Incident Agent
+     - Incident Reasoning Agent
+     - Agent Tool Gateway
 
 Cognito authenticates browser users.
 IRSA grants workloads narrow AWS permissions.
@@ -162,8 +161,8 @@ cd ..
 docker compose up --build
 ```
 
-See the root [README.md](../README.md) for local target inventory and
-WebSocket session steps.
+The separately supplied workspace `capstone/README.md` describes the local
+inventory and WebSocket session steps.
 
 ## How To Deploy To AWS
 
@@ -181,6 +180,7 @@ Prerequisites:
 Start with a credential and configuration check:
 
 ```bash
+export AWS_PROFILE=capstone
 aws sts get-caller-identity
 ./scripts/preflight.sh
 terraform init -reconfigure
@@ -190,7 +190,8 @@ terraform validate
 Apply the base infrastructure:
 
 ```bash
-terraform apply -var-file=secrets.tfvars
+terraform plan -var-file=secrets.tfvars -var-file=teammate-access.local.tfvars
+terraform apply -var-file=secrets.tfvars -var-file=teammate-access.local.tfvars
 ```
 
 When enabling Incident Agent LangSmith tracing, set the API key in
@@ -216,6 +217,7 @@ of creating a duplicate provider:
 ```bash
 terraform apply \
   -var-file=secrets.tfvars \
+  -var-file=teammate-access.local.tfvars \
   -var='github_oidc_provider_arn=arn:aws:iam::<account-id>:oidc-provider/token.actions.githubusercontent.com'
 ```
 
@@ -225,8 +227,7 @@ Terraform does not attempt to recreate them.
 
 Create or assign at least one Cognito user to the capital `Admin` group before
 the first webapp deployment. Terraform creates the groups but does not manage
-individual user membership because Cognito pools configured with email aliases
-use internal UUID usernames that are awkward to manage declaratively.
+individual user membership. Assign the operator using the Cognito username or UUID.
 
 ```bash
 POOL_ID=$(terraform output -raw cognito_user_pool_id)
@@ -237,8 +238,8 @@ aws cognito-idp admin-add-user-to-group \
   --group-name Admin
 ```
 
-If one of the exact webapp groups already exists in the user pool, import it
-before applying. For example:
+Import existing Cognito groups and managed-login branding before applying.
+For a group:
 
 ```bash
 POOL_ID=$(terraform output -raw cognito_user_pool_id)
@@ -281,6 +282,7 @@ the ALB hostname, create or update the Route 53 alias:
 cd ../aws-terraform
 terraform apply \
   -var-file=secrets.tfvars \
+  -var-file=teammate-access.local.tfvars \
   -var='application_alb_dns_name=<ALB DNS name>'
 ```
 
@@ -402,9 +404,8 @@ After retiring AWS, explicitly set repository variable
 `TERRAFORM_LIVE_PLAN_ENABLED=false` to retain configuration validation only.
 The job summary then states that no live AWS plan was performed. While AWS is
 active, leave the variable unset or `true`; missing credentials or backend access
-must fail CI. The legacy `workflows/cd.yaml` is outside `.github/workflows` and
-is not an enabled apply pipeline. This closeout does not enable it or grant the
-CI planning role apply authority.
+must fail CI. CI performs validation and read-only planning; infrastructure
+applies are operator-run.
 
 ### Argo CD Access
 
@@ -621,23 +622,7 @@ Expected result:
 - WebSocket terminal upgrades go through
   `wss://api.ddm.keiyam.me/sessions/{sessionId}/ws`
 
-## Known Limitations
-
-- The first infrastructure apply cannot create the final Route 53 ALB alias
-  because the ALB is created later by Kubernetes.
-- Terraform creates Cognito groups, but operator membership in `Admin` is a
-  manual or scripted operational step.
-- Changing an existing Cognito domain between Hosted UI classic and managed
-  login can take a few minutes to propagate and invalidates existing
-  Cognito login-page sessions.
-- If a Cognito managed-login branding style already exists for the app client,
-  import it before applying Terraform.
-- Incident Agent worker flows and Agent Control Plane approval/remediation APIs
-  are deployed for Phase 2, but they remain outside the core SSH session
-  verification path.
-- Destroying the stack should be planned carefully because EKS load balancers,
-  Route 53 aliases, secrets, and target-host dependencies may have cross-repo
-  ownership.
+## Provider lockfile maintenance
 
 Provider versions are unchanged by platform checksum maintenance. When refreshing
 checksums for the supported macOS development and Linux CI platforms, run:
